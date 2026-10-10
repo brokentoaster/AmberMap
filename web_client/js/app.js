@@ -13,6 +13,7 @@
     let tileLayer = null;
     let markersLayer = null;
     let markersData = { signs: [], players: [] };
+    let showPlayerMarkers = localStorage.getItem('showPlayerMarkers') !== 'false';
 
     function loadMarkers(dim, layer) {
         markersData = { signs: [], players: [] };
@@ -61,6 +62,9 @@
         });
 
         markersData.players.forEach(player => {
+            if (!showPlayerMarkers) {
+                return;
+            }
             L.circleMarker([player.z, player.x], {
                 radius: 6,
                 color: '#38bdf8',
@@ -210,6 +214,15 @@
             } else {
                 map.flyTo([centerLat, centerLng], Math.min(2, maxZoom), { duration: 0.6 });
             }
+        });
+
+        const playersBtn = document.getElementById('btn-toggle-players');
+        playersBtn.classList.toggle('active', showPlayerMarkers);
+        playersBtn.addEventListener('click', function () {
+            showPlayerMarkers = !showPlayerMarkers;
+            localStorage.setItem('showPlayerMarkers', String(showPlayerMarkers));
+            playersBtn.classList.toggle('active', showPlayerMarkers);
+            renderMarkers();
         });
 
         document.querySelectorAll('.dim-btn').forEach(btn => {
