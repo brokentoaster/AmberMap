@@ -13,7 +13,37 @@
  * Licensed under Apache-2.0 or MIT
  */
 
-use ambermap::web::{get_embedded_asset, resolve_mime};
+use ambermap::web::{get_embedded_asset, resolve_mime, status_metadata};
+
+#[test]
+fn test_status_metadata_per_dimension() {
+    let base = std::env::temp_dir().join(format!("ambermap_status_test_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&base);
+    std::fs::create_dir_all(base.join("overworld")).unwrap();
+    std::fs::create_dir_all(base.join("nether")).unwrap();
+
+    std::fs::write(
+        base.join("overworld").join("metadata.json"),
+        r#"{"center_x":10,"max_zoom":4}"#,
+    )
+    .unwrap();
+    std::fs::write(
+        base.join("nether").join("metadata.json"),
+        r#"{"center_x":99,"max_zoom":2}"#,
+    )
+    .unwrap();
+
+    assert!(status_metadata(&base, "overworld").contains(r#""center_x":10"#));
+    assert!(status_metadata(&base, "nether").contains(r#""center_x":99"#));
+
+    let fallback = status_metadata(&base, "the_end");
+    assert!(fallback.contains(r#""rendered":false"#));
+
+    let no_meta_at_all = status_metadata(&base, "overworld");
+    assert!(no_meta_at_all.contains("center_x"));
+
+    let _ = std::fs::remove_dir_all(&base);
+}
 
 #[test]
 fn test_mime_type_resolution() {

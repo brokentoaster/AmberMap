@@ -7,32 +7,46 @@
     let worldBounds = null;
     let cacheBuster = Date.now();
 
-    fetch('/api/status')
-        .then(res => res.json())
-        .then(data => {
-            if (data.format) {
-                tileFormat = data.format;
-            }
-            if (data.max_zoom !== undefined) {
-                maxZoom = data.max_zoom;
-            }
-            if (data.center_x !== undefined && data.center_z !== undefined) {
-                centerLng = data.center_x;
-                centerLat = data.center_z;
-            }
-            if (data.min_block_x !== undefined && data.max_block_x !== undefined) {
-                const sw = L.latLng(data.min_block_z, data.min_block_x);
-                const ne = L.latLng(data.max_block_z, data.max_block_x);
-                worldBounds = L.latLngBounds(sw, ne);
-            }
-            initMap();
-        })
-        .catch(() => {
-            initMap();
-        });
-
     let map = null;
     let tileLayer = null;
+
+    function loadDimension(dim) {
+        currentDimension = dim;
+        return fetch('/api/status?dim=' + encodeURIComponent(dim))
+            .then(res => res.json())
+            .then(data => {
+                if (data.format) {
+                    tileFormat = data.format;
+                }
+                if (data.max_zoom !== undefined) {
+                    maxZoom = data.max_zoom;
+                }
+                if (data.center_x !== undefined && data.center_z !== undefined) {
+                    centerLng = data.center_x;
+                    centerLat = data.center_z;
+                } else {
+                    centerLng = 0;
+                    centerLat = 0;
+                }
+                if (data.min_block_x !== undefined && data.max_block_x !== undefined) {
+                    const sw = L.latLng(data.min_block_z, data.min_block_x);
+                    const ne = L.latLng(data.max_block_z, data.max_block_x);
+                    worldBounds = L.latLngBounds(sw, ne);
+                } else {
+                    worldBounds = null;
+                }
+            })
+            .catch(() => {
+                tileFormat = 'webp';
+                maxZoom = 4;
+                centerLat = 0;
+                centerLng = 0;
+                worldBounds = null;
+            })
+            .then(() => {
+                initMap();
+            });
+    }
 
     function initMap() {
         if (map) {
@@ -52,6 +66,12 @@
             attributionControl: false,
         });
 
+        if (worldBounds) {
+            map.fitBounds(worldBounds, { maxZoom: Math.min(2, maxZoom) });
+        } else {
+            map.setView([centerLat, centerLng], Math.min(2, maxZoom));
+        }
+
         L.control.zoom({ position: 'topright' }).addTo(map);
 
         const AmberTileLayer = L.TileLayer.extend({
@@ -69,8 +89,6 @@
             maxNativeZoom: maxZoom,
             errorTileUrl: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256"><rect width="256" height="256" fill="rgba(15,23,42,0.6)"/></svg>',
         }).addTo(map);
-
-        map.setView([centerLat, centerLng], Math.min(2, maxZoom));
 
         const hudBlock = document.getElementById('hud-block-coords');
         const hudChunk = document.getElementById('hud-chunk-coords');
@@ -99,16 +117,29 @@
         });
 
         document.getElementById('btn-recenter').addEventListener('click', function () {
-            map.flyTo([centerLat, centerLng], Math.min(2, maxZoom), { duration: 0.6 });
+            if (worldBounds) {
+                map.flyToBounds(worldBounds, { maxZoom: Math.min(2, maxZoom), duration: 0.6 });
+            } else {
+                map.flyTo([centerLat, centerLng], Math.min(2, maxZoom), { duration: 0.6 });
+            }
         });
 
         document.querySelectorAll('.dim-btn').forEach(btn => {
-            btn.addEventListener('click', function () {
-                document.querySelectorAll('.dim-btn').forEach(b => b.classList.remove('active'));
-                this.classList.add('active');
-                currentDimension = this.dataset.dim;
-                tileLayer.redraw();
-            });
+            btn.classList.toggle('active', btn.dataset.dim === currentDimension);
         });
     }
+
+    document.querySelectorAll('.dim-btn').forEach(btn => {
+        btn.addEventListener('click', function () {
+            if (this.dataset.dim === currentDimension) {
+                return;
+            }
+            document.querySelectorAll('.dim-btn').forEach(b => b.classList.remove('active'));
+            this.classList.add('active');
+            cacheBuster = Date.now();
+            loadDimension(this.dataset.dim);
+        });
+    });
+
+    loadDimension(currentDimension);
 })();

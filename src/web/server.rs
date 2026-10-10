@@ -17,7 +17,7 @@ use crate::core::error::{AmberError, Result};
 use crate::web::embedded::{get_embedded_asset, resolve_mime};
 use std::fs::File;
 use std::io::Read;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tiny_http::{Header, Response, Server, StatusCode};
 
 pub struct ServerConfig {
@@ -27,6 +27,20 @@ pub struct ServerConfig {
     pub auto_open: bool,
     pub tile_format: String,
     pub max_zoom: u8,
+}
+
+pub fn status_metadata(tiles_dir: &Path, dim: &str) -> String {
+    if !dim.is_empty() {
+        let dim_meta = tiles_dir.join(dim).join("metadata.json");
+        if let Ok(meta) = std::fs::read_to_string(&dim_meta) {
+            return meta;
+        }
+    }
+
+    match std::fs::read_to_string(tiles_dir.join("metadata.json")) {
+        Ok(meta) => meta,
+        Err(_) => r#"{"status":"ok","rendered":false}"#.to_string(),
+    }
 }
 
 pub fn start_server(config: ServerConfig) -> Result<()> {
@@ -52,15 +66,12 @@ pub fn start_server(config: ServerConfig) -> Result<()> {
         let path = raw_url.split('?').next().unwrap_or("/");
 
         if path == "/api/status" {
-            let meta_path = config.tiles_dir.join("metadata.json");
-            let json_body = if let Ok(meta) = std::fs::read_to_string(&meta_path) {
-                meta
-            } else {
-                format!(
-                    r#"{{"status":"ok","format":"{}","max_zoom":{},"center_x":0,"center_z":0}}"#,
-                    config.tile_format, config.max_zoom
-                )
-            };
+            let query = raw_url.split('?').nth(1).unwrap_or("");
+            let dim = query
+                .split('&')
+                .find_map(|p| p.strip_prefix("dim="))
+                .unwrap_or("");
+            let json_body = status_metadata(&config.tiles_dir, dim);
             let response = Response::from_string(json_body)
                 .with_header(
                     Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..]).unwrap(),

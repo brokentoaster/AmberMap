@@ -46,8 +46,8 @@ enum Commands {
         #[arg(
             short,
             long,
-            default_value = "overworld",
-            help = "Dimension (overworld/nether/the_end)"
+            default_value = "all",
+            help = "Dimension (all/overworld/nether/the_end)"
         )]
         dimension: String,
 
@@ -204,75 +204,87 @@ fn main() {
             bind,
             open,
         } => {
-            let dim = parse_dimension(&dimension);
+            let dims: Vec<Dimension> = match dimension.as_str() {
+                "all" => vec![Dimension::Overworld, Dimension::Nether, Dimension::TheEnd],
+                _ => vec![parse_dimension(&dimension)],
+            };
             let tile_fmt = TileFormat::from_str(&format);
 
-            println!("[info] Scanning database for {:?} chunks...", dim);
+            for dim in dims {
+                println!("[info] Scanning database for {:?} chunks...", dim);
 
-            let options = RenderOptions {
-                world_path: world.clone(),
-                output_dir: output.clone(),
-                dimension: dim,
-                zoom_levels: zoom_levels.max(1),
-                format: tile_fmt,
-                threads,
-                enable_hillshading: !no_hillshading,
-            };
+                let options = RenderOptions {
+                    world_path: world.clone(),
+                    output_dir: output.clone(),
+                    dimension: dim,
+                    zoom_levels: zoom_levels.max(1),
+                    format: tile_fmt,
+                    threads,
+                    enable_hillshading: !no_hillshading,
+                };
 
-            let thread_count = if threads == 0 {
-                rayon::current_num_threads()
-            } else {
-                threads
-            };
+                let thread_count = if threads == 0 {
+                    rayon::current_num_threads()
+                } else {
+                    threads
+                };
 
-            println!(
-                "[render] Processing base tiles (z={}) using {} threads...",
-                zoom_levels.saturating_sub(1),
-                thread_count
-            );
-
-            if zoom_levels > 1 {
                 println!(
-                    "[render] Generating pyramid levels (z{} -> z0)...",
-                    zoom_levels.saturating_sub(2)
+                    "[render] Processing base tiles (z={}) using {} threads...",
+                    zoom_levels.saturating_sub(1),
+                    thread_count
                 );
-            }
 
-            match render_world_map(options) {
-                Ok(stats) => {
-                    let secs = stats.elapsed.as_secs_f64();
-                    let speed = if secs > 0.0 {
-                        (stats.total_chunks as f64) / secs
-                    } else {
-                        0.0
-                    };
-
+                if zoom_levels > 1 {
                     println!(
-                        "✓ Render completed: {} tiles generated (from {} chunks) in {:.2?} ({:.0} chunks/sec)",
-                        format_number(stats.total_tiles),
-                        format_number(stats.total_chunks),
-                        stats.elapsed,
-                        speed
+                        "[render] Generating pyramid levels (z{} -> z0)...",
+                        zoom_levels.saturating_sub(2)
                     );
-                    println!("[info] Tiles saved to {:?}", output);
+                }
 
-                    if serve {
-                        let srv_cfg = ServerConfig {
-                            bind_addr: bind,
-                            port,
-                            tiles_dir: output,
-                            auto_open: open,
-                            tile_format: format,
-                            max_zoom: zoom_levels.saturating_sub(1),
-                        };
-                        if let Err(e) = start_server(srv_cfg) {
-                            eprintln!("[error] Server error: {}", e);
-                            std::process::exit(1);
+                match render_world_map(options) {
+                    Ok(stats) => {
+                        if stats.total_chunks == 0 {
+                            println!("[warn] No {:?} chunks found in this world, skipping", dim);
+                            continue;
                         }
+
+                        let secs = stats.elapsed.as_secs_f64();
+                        let speed = if secs > 0.0 {
+                            (stats.total_chunks as f64) / secs
+                        } else {
+                            0.0
+                        };
+
+                        println!(
+                            "✓ {:?} render completed: {} tiles generated (from {} chunks) in {:.2?} ({:.0} chunks/sec)",
+                            dim,
+                            format_number(stats.total_tiles),
+                            format_number(stats.total_chunks),
+                            stats.elapsed,
+                            speed
+                        );
+                    }
+                    Err(e) => {
+                        eprintln!("[error] Render failed: {}", e);
+                        std::process::exit(1);
                     }
                 }
-                Err(e) => {
-                    eprintln!("[error] Render failed: {}", e);
+            }
+
+            println!("[info] Tiles saved to {:?}", output);
+
+            if serve {
+                let srv_cfg = ServerConfig {
+                    bind_addr: bind,
+                    port,
+                    tiles_dir: output,
+                    auto_open: open,
+                    tile_format: format,
+                    max_zoom: zoom_levels.saturating_sub(1),
+                };
+                if let Err(e) = start_server(srv_cfg) {
+                    eprintln!("[error] Server error: {}", e);
                     std::process::exit(1);
                 }
             }

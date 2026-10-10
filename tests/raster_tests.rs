@@ -127,6 +127,49 @@ fn test_hillshade_slopes() {
 }
 
 #[test]
+fn test_nether_roof_bedrock_skipped() {
+    let colormap = ColorMap::new();
+
+    let roof = create_mock_subchunk(&[(0, "minecraft:bedrock")]);
+    let terrain = create_mock_subchunk(&[(0, "minecraft:netherrack")]);
+
+    let chunk = ChunkData {
+        chunk_pos: ChunkPos::new(0, 0),
+        dimension: Dimension::Nether,
+        version: Some(42),
+        subchunks: vec![(3, terrain), (12, roof)],
+    };
+
+    let result = traverse_chunk(&chunk, &colormap);
+
+    // netherrack [111, 40, 40, 255] at world y = 48, roof ignored
+    assert_eq!(result.heightmap[0], 48);
+    assert_eq!(result.pixels[0], 111);
+    assert_eq!(result.pixels[1], 40);
+    assert_eq!(result.pixels[2], 40);
+    assert_eq!(result.pixels[3], 255);
+}
+
+#[test]
+fn test_overworld_bedrock_still_renders() {
+    let colormap = ColorMap::new();
+
+    let only_bedrock = create_mock_subchunk(&[(0, "minecraft:bedrock")]);
+
+    let chunk = ChunkData {
+        chunk_pos: ChunkPos::new(0, 0),
+        dimension: Dimension::Overworld,
+        version: Some(42),
+        subchunks: vec![(0, only_bedrock)],
+    };
+
+    let result = traverse_chunk(&chunk, &colormap);
+
+    assert_eq!(result.heightmap[0], 0);
+    assert_eq!(result.pixels[3], 255);
+}
+
+#[test]
 fn test_chunk_rasterize_pipeline() {
     let colormap = ColorMap::new();
     let subchunk = create_mock_subchunk(&[(0, "minecraft:grass_block")]);

@@ -17,4 +17,4 @@ pub mod embedded;
 pub mod server;
 
 pub use embedded::{get_embedded_asset, resolve_mime, WebAssets};
-pub use server::{start_server, ServerConfig};
+pub use server::{start_server, status_metadata, ServerConfig};

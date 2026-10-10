@@ -13,6 +13,7 @@
  * Licensed under Apache-2.0 or MIT
  */
 
+use crate::leveldb::keys::Dimension;
 use crate::leveldb::reader::ChunkData;
 use crate::raster::colormap::ColorMap;
 
@@ -54,6 +55,16 @@ pub fn traverse_chunk(chunk: &ChunkData, colormap: &ColorMap) -> ColumnScanResul
                         };
 
                         if colormap.is_air(block_name) {
+                            continue;
+                        }
+
+                        // The nether has a solid bedrock roof at the top of the
+                        // dimension; skipping bedrock above all terrain keeps
+                        // the map from rendering as an opaque roof.
+                        if chunk.dimension == Dimension::Nether
+                            && recorded_height.is_none()
+                            && block_name == "minecraft:bedrock"
+                        {
                             continue;
                         }
 

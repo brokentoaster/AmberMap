@@ -60,7 +60,7 @@ ambermap render <WORLD> [OPTIONS]
 |---|---|---|
 | `WORLD` | Path to Bedrock world folder or `db` directory | *Required* |
 | `-o, --output <DIR>` | Output directory for tile hierarchy | `./public/map` |
-| `-d, --dimension <DIM>` | Dimension (`overworld`, `nether`, `the_end`) | `overworld` |
+| `-d, --dimension <DIM>` | Dimension (`all`, `overworld`, `nether`, `the_end`) | `all` |
 | `-z, --zoom-levels <N>` | Number of zoom levels ($Z_0 \dots Z_{N-1}$) | `5` |
 | `-f, --format <FMT>` | Tile format (`webp` or `png`) | `webp` |
 | `-t, --threads <N>` | Thread pool size (`0` = logical CPU count) | `0` |
@@ -71,8 +71,11 @@ ambermap render <WORLD> [OPTIONS]
 | `--open` | Open browser automatically | `false` |
 
 ```bash
-# Example: Render and serve immediately
+# Example: Render all dimensions and serve immediately
 ambermap render "worlds/world" --serve --open
+
+# Example: Render only the overworld
+ambermap render "worlds/world" -d overworld
 ```
 
 ### 2. Standalone Web Server (`serve`)
