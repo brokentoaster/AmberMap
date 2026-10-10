@@ -15,11 +15,48 @@
 
 use crate::leveldb::keys::Dimension;
 use crate::leveldb::reader::ChunkData;
-use crate::raster::colormap::ColorMap;
+use crate::raster::colormap::{BlockColor, ColorMap};
+use crate::subchunk::storage::SubChunkStorage;
 
 pub struct ColumnScanResult {
     pub pixels: [u8; 16 * 16 * 4],
     pub heightmap: [i16; 16 * 16],
+}
+
+struct VoxelLut {
+    color: BlockColor,
+    air: bool,
+    bedrock: bool,
+}
+
+struct LayerLut {
+    entries: Vec<VoxelLut>,
+    /// True when no palette entry can ever contribute a pixel for this
+    /// dimension, so the whole layer can be skipped in the ray march.
+    skippable: bool,
+}
+
+fn build_layer_lut(layer: &SubChunkStorage, colormap: &ColorMap, nether: bool) -> LayerLut {
+    let entries: Vec<VoxelLut> = (0..layer.palette.len())
+        .map(|i| {
+            let name = layer
+                .palette
+                .get(i)
+                .map(|b| b.name.as_str())
+                .unwrap_or_default();
+            VoxelLut {
+                color: colormap.get(name),
+                air: colormap.is_air(name),
+                bedrock: name == "minecraft:bedrock",
+            }
+        })
+        .collect();
+
+    let skippable = entries
+        .iter()
+        .all(|e| e.air || e.color.rgba[3] == 0 || (nether && e.bedrock));
+
+    LayerLut { entries, skippable }
 }
 
 /// Renders a full column scan from the top of the world down.
@@ -37,6 +74,20 @@ pub fn traverse_chunk_y_range(
     let mut pixels = [0u8; 16 * 16 * 4];
     let mut heightmap = [0i16; 16 * 16];
 
+    // One lookup-table entry per palette index per layer, built once per
+    // chunk instead of resolving block names per voxel.
+    let layer_luts: Vec<Vec<LayerLut>> = chunk
+        .subchunks
+        .iter()
+        .map(|(_, subchunk)| {
+            subchunk
+                .layers
+                .iter()
+                .map(|layer| build_layer_lut(layer, colormap, chunk.dimension == Dimension::Nether))
+                .collect()
+        })
+        .collect();
+
     for z in 0..16 {
         for x in 0..16 {
             let col_idx = z * 16 + x;
@@ -49,7 +100,7 @@ pub fn traverse_chunk_y_range(
             let mut recorded_height: Option<i16> = None;
 
             // ray-march top-down through subchunks
-            'ray: for (sub_y, subchunk) in chunk.subchunks.iter().rev() {
+            'ray: for (sub_idx, (sub_y, subchunk)) in chunk.subchunks.iter().enumerate().rev() {
                 let base_y = (*sub_y as i32) * 16;
 
                 for local_y in (0..16).rev() {
@@ -62,16 +113,21 @@ pub fn traverse_chunk_y_range(
                     }
 
                     // inspect layers top-to-bottom (layer 1 waterlogged before layer 0 base)
-                    for layer in subchunk.layers.iter().rev() {
+                    for (layer_idx, layer) in subchunk.layers.iter().enumerate().rev() {
+                        let layer_lut = &layer_luts[sub_idx][layer_idx];
+                        if layer_lut.skippable {
+                            continue;
+                        }
+                        let lut = &layer_lut.entries;
                         let block_idx = (x << 8) | (z << 4) | local_y;
                         let palette_idx = layer.blocks[block_idx] as usize;
 
-                        let block_name = match layer.palette.get(palette_idx) {
-                            Some(b) => b.name.as_str(),
+                        let entry = match lut.get(palette_idx) {
+                            Some(e) => e,
                             None => continue,
                         };
 
-                        if colormap.is_air(block_name) {
+                        if entry.air {
                             continue;
                         }
 
@@ -80,12 +136,12 @@ pub fn traverse_chunk_y_range(
                         // the map from rendering as an opaque roof.
                         if chunk.dimension == Dimension::Nether
                             && recorded_height.is_none()
-                            && block_name == "minecraft:bedrock"
+                            && entry.bedrock
                         {
                             continue;
                         }
 
-                        let color = colormap.get(block_name);
+                        let color = entry.color;
                         if color.rgba[3] == 0 {
                             continue;
                         }

@@ -22,5 +22,7 @@ pub mod pyramid;
 pub use compositor::{TileBuffer, TILE_BYTES, TILE_SIZE};
 pub use coordinates::TileCoord;
 pub use encoder::{save_tile, save_tile_layered, TileFormat};
-pub use pipeline::{render_world_map, RenderLayer, RenderOptions, RenderStats};
+pub use pipeline::{
+    render_world_map, render_world_map_with_db, RenderLayer, RenderOptions, RenderStats,
+};
 pub use pyramid::downsample_quadrants;

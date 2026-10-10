@@ -20,6 +20,7 @@ use crate::leveldb::decompressor::decompress_payload;
 use crate::leveldb::keys::{DbKey, Dimension, KeyTag};
 use crate::subchunk::parser::SubChunkParser;
 use crate::subchunk::storage::SubChunk;
+use rayon::prelude::*;
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -52,17 +53,33 @@ impl WorldDb {
             )));
         }
 
-        let mut entries = HashMap::new();
-
+        let mut file_paths: Vec<PathBuf> = Vec::new();
         if let Ok(read_dir) = fs::read_dir(&db_dir) {
             for entry in read_dir.flatten() {
                 let path = entry.path();
                 if let Some(ext) = path.extension() {
                     if ext == "ldb" || ext == "sst" {
-                        let _ = read_sstable(&path, &mut entries);
+                        file_paths.push(path);
                     }
                 }
             }
+        }
+
+        let maps: Vec<HashMap<Vec<u8>, Vec<u8>>> = file_paths
+            .par_iter()
+            .filter_map(|path| {
+                let mut map = HashMap::new();
+                if read_sstable(path, &mut map).is_ok() {
+                    Some(map)
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        let mut entries = HashMap::new();
+        for map in maps {
+            entries.extend(map);
         }
 
         Ok(Self {

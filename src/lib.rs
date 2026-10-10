@@ -29,7 +29,7 @@ pub use raster::{
 };
 pub use subchunk::{BlockState, Palette, SubChunk, SubChunkParser, SubChunkStorage};
 pub use tiler::{
-    downsample_quadrants, render_world_map, save_tile, RenderOptions, RenderStats, TileBuffer,
-    TileCoord, TileFormat,
+    downsample_quadrants, render_world_map, render_world_map_with_db, save_tile, RenderOptions,
+    RenderStats, TileBuffer, TileCoord, TileFormat,
 };
 pub use web::{get_embedded_asset, resolve_mime, start_server, ServerConfig, WebAssets};

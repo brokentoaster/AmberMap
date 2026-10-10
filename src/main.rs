@@ -17,7 +17,7 @@ use ambermap::core::coordinates::ChunkPos;
 use ambermap::leveldb::keys::Dimension;
 use ambermap::leveldb::reader::WorldDb;
 use ambermap::raster::{rasterize_chunk, ColorMap};
-use ambermap::tiler::{render_world_map, RenderLayer, RenderOptions, TileFormat};
+use ambermap::tiler::{render_world_map_with_db, RenderLayer, RenderOptions, TileFormat};
 use ambermap::web::{start_server, ServerConfig};
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
@@ -263,6 +263,14 @@ fn main() {
                 None => Vec::new(),
             };
 
+            let db = match WorldDb::open(&world) {
+                Ok(db) => db,
+                Err(e) => {
+                    eprintln!("[error] Failed to open world database: {}", e);
+                    std::process::exit(1);
+                }
+            };
+
             for dim in dims {
                 let mut passes: Vec<Option<RenderLayer>> = vec![None];
                 passes.extend(extra_layers.iter().cloned().map(Some));
@@ -305,7 +313,7 @@ fn main() {
                         }
                     }
 
-                    match render_world_map(options) {
+                    match render_world_map_with_db(&db, options) {
                         Ok(stats) => {
                             if stats.total_chunks == 0 && pass_layer.is_none() {
                                 println!(

@@ -70,6 +70,11 @@ pub struct RenderStats {
 }
 
 pub fn render_world_map(options: RenderOptions) -> Result<RenderStats> {
+    let db = WorldDb::open(&options.world_path)?;
+    render_world_map_with_db(&db, options)
+}
+
+pub fn render_world_map_with_db(db: &WorldDb, options: RenderOptions) -> Result<RenderStats> {
     let start_time = Instant::now();
 
     if options.threads > 0 {
@@ -78,7 +83,6 @@ pub fn render_world_map(options: RenderOptions) -> Result<RenderStats> {
             .build_global();
     }
 
-    let db = WorldDb::open(&options.world_path)?;
     let chunks = db.scan_chunks(options.dimension);
 
     if chunks.is_empty() {

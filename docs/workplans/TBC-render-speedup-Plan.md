@@ -17,13 +17,13 @@
 
 ## Tasks
 
-- [ ] Task 1: Establish baseline timing and output snapshot
+- [x] Task 1: Establish baseline timing and output snapshot
   - Notes: Run a release render on a representative world, record wall time,
     thread count, and copy the output tile tree to a reference directory for
     pixel-diffing in later tasks.
   - Done when: baseline time + reference tiles captured and noted.
 
-- [ ] Task 2: Add per-layer palette lookup table to the rasterizer
+- [x] Task 2: Add per-layer palette lookup table to the rasterizer
   - Notes: Build a small per-layer entry (color, air flag, nether-bedrock
     flag) once per subchunk layer, indexed by palette index, in
     `traverse_chunk_y_range`. Replace `colormap.is_air(name)` /
@@ -34,7 +34,7 @@
   - Done when: `cargo test` passes, clippy/fmt clean, output pixel-identical
     to baseline (see spec AC 1-3, 5).
 
-- [ ] Task 3: Skip subchunks whose palette has no renderable blocks
+- [x] Task 3: Skip subchunks whose palette has no renderable blocks
   - Notes: Precompute an all-air flag per subchunk layer (from the palette)
     and skip the whole layer in the ray march when set. Re-measure timing.
   - Touchpoints: `src/raster/traverser.rs` (or `src/subchunk/` if the flag
@@ -42,7 +42,7 @@
   - Done when: `cargo test` passes, output pixel-identical, timing improved
     or neutral vs Task 2.
 
-- [ ] Task 4: Parallelize chunk fetch/decode ahead of rasterization
+- [x] Task 4: Parallelize chunk fetch/decode ahead of rasterization
   - Notes: If the LevelDB reader cannot be shared across rayon threads,
     prefetch + decompress chunks into owned `ChunkData` values with a
     `par_iter` pass, then rasterize from the decoded set. Re-measure timing.
@@ -51,7 +51,7 @@
     meets spec AC 4 (>= 2x faster than Task 1 baseline) or remaining gap is
     documented.
 
-- [ ] Task 5: Final verification against spec acceptance criteria
+- [x] Task 5: Final verification against spec acceptance criteria
   - Notes: Pixel-diff sample of base + pyramid tiles vs baseline, run fmt,
     clippy `-D warnings`, and full test suite; confirm nether roof and
     Y-layer-slice behavior unchanged (spec AC 1-6).
