@@ -11,6 +11,71 @@
 
     let map = null;
     let tileLayer = null;
+    let markersLayer = null;
+    let markersData = { signs: [], players: [] };
+
+    function loadMarkers(dim, layer) {
+        markersData = { signs: [], players: [] };
+        const layerSeg = layer && layer !== 'surface' ? encodeURIComponent(layer) + '/' : '';
+        return fetch(`/tiles/${encodeURIComponent(dim)}/${layerSeg}markers.json?t=${cacheBuster}`)
+            .then(res => (res.ok ? res.json() : null))
+            .then(data => {
+                if (data && Array.isArray(data.signs) && Array.isArray(data.players)) {
+                    markersData = data;
+                }
+            })
+            .catch(() => {
+                /* markers are optional */
+            });
+    }
+
+    function renderMarkers() {
+        if (!map) {
+            return;
+        }
+        if (markersLayer) {
+            markersLayer.remove();
+            markersLayer = null;
+        }
+        if (!markersData.signs.length && !markersData.players.length) {
+            return;
+        }
+
+        markersLayer = L.layerGroup().addTo(map);
+
+        markersData.signs.forEach(sign => {
+            const text = (sign.lines || [])
+                .filter(Boolean)
+                .join('\n') || 'Sign';
+            const icon = L.divIcon({
+                className: 'sign-marker-icon',
+                html: '<div class="sign-marker">🪧</div>',
+                iconSize: [18, 18],
+                iconAnchor: [9, 9],
+            });
+            L.marker([sign.z, sign.x], { icon: icon })
+                .bindTooltip(text.split('\n').map(l => l.replace(/</g, '&lt;')).join('<br>'), {
+                    direction: 'top',
+                })
+                .addTo(markersLayer);
+        });
+
+        markersData.players.forEach(player => {
+            L.circleMarker([player.z, player.x], {
+                radius: 6,
+                color: '#38bdf8',
+                weight: 2,
+                fillColor: '#0ea5e9',
+                fillOpacity: 0.7,
+            })
+                .bindTooltip(
+                    `${player.name || 'Player'}<br>` +
+                    `X ${Math.round(player.x)} Y ${Math.round(player.y)} Z ${Math.round(player.z)}`, {
+                    direction: 'top',
+                })
+                .addTo(markersLayer);
+        });
+    }
 
     function loadDimension(dim, layer) {
         currentDimension = dim;
@@ -65,7 +130,9 @@
             })
             .then(() => {
                 initMap();
-            });
+            })
+            .then(() => loadMarkers(currentDimension, currentLayer))
+            .then(renderMarkers);
     }
 
     function initMap() {

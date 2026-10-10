@@ -17,6 +17,7 @@ use crate::core::coordinates::ChunkPos;
 use crate::core::error::{AmberError, Result};
 use crate::leveldb::keys::Dimension;
 use crate::leveldb::reader::WorldDb;
+use crate::markers::collect_markers;
 use crate::raster::chunk_raster::rasterize_chunk_y_range;
 use crate::raster::colormap::ColorMap;
 use crate::tiler::compositor::TileBuffer;
@@ -227,6 +228,15 @@ pub fn render_world_map_with_db(db: &WorldDb, options: RenderOptions) -> Result<
     let _ = std::fs::write(&meta_path, &meta_json);
     if options.layer.is_none() {
         let _ = std::fs::write(options.output_dir.join("metadata.json"), &meta_json);
+    }
+
+    let markers = collect_markers(db, options.dimension);
+    if !markers.is_empty() {
+        let markers_path = match &options.layer {
+            Some(layer) => dim_dir.join(&layer.id).join("markers.json"),
+            None => dim_dir.join("markers.json"),
+        };
+        let _ = std::fs::write(markers_path, markers.to_json());
     }
 
     if max_zoom > 0 {

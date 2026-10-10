@@ -104,6 +104,30 @@ impl WorldDb {
         list
     }
 
+    /// Raw (still compressed) payloads of all block-entity records for a
+    /// dimension, paired with their chunk position.
+    pub fn block_entity_payloads(&self, dimension: Dimension) -> Vec<Vec<u8>> {
+        self.entries
+            .iter()
+            .filter(|(k, _)| {
+                matches!(
+                    DbKey::parse(k),
+                    Ok(key) if key.tag == KeyTag::BlockEntity && key.dimension == dimension
+                )
+            })
+            .map(|(_, v)| v.clone())
+            .collect()
+    }
+
+    /// Raw payloads of all player records (`~local_player` and `player_*`).
+    pub fn player_payloads(&self) -> Vec<Vec<u8>> {
+        self.entries
+            .iter()
+            .filter(|(k, _)| k.starts_with(b"~local_player") || k.starts_with(b"player"))
+            .map(|(_, v)| v.clone())
+            .collect()
+    }
+
     pub fn get_chunk(&self, chunk_pos: ChunkPos, dimension: Dimension) -> Result<ChunkData> {
         let mut subchunks = Vec::new();
         let mut version = None;

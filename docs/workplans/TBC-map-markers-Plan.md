@@ -18,7 +18,7 @@
 
 ## Tasks
 
-- [ ] Task 1: Parse sign block entities into marker structs
+- [x] Task 1: Parse sign block entities into marker structs
   - Notes: Add a `markers` module with `Marker` types (SignMarker with
     position + 4 text lines; PlayerMarker with name, position, dimension)
     and a sign NBT parser reading `BlockEntity` keys for `Sign` /
@@ -29,14 +29,14 @@
   - Done when: synthetic NBT tests cover valid sign, unknown id, and
     malformed payload; `cargo test` green.
 
-- [ ] Task 2: Parse player records into player markers
+- [x] Task 2: Parse player records into player markers
   - Notes: Parse `~local_player` and `player_*` keys from the entries map
     for position, dimension, and name if present; fall back to a generic
     "Player" label when a name is unavailable (spec Open Question).
   - Touchpoints: `src/markers/`, `src/leveldb/reader.rs`
   - Done when: synthetic player NBT tests pass; marker structs complete.
 
-- [ ] Task 3: Emit markers.json during render and serve it
+- [x] Task 3: Emit markers.json during render and serve it
   - Notes: In `render_world_map_with_db`, after tile rendering, run a
     single-threaded marker pass over the db and write
     `output/<dim>/markers.json`. Serve it via the existing embedded server
@@ -47,7 +47,7 @@
   - Done when: a real-world render produces valid markers JSON with
     expected signs/players; tiles remain pixel-identical (spec AC 1, 5, 6).
 
-- [ ] Task 4: Web client hover markers per dimension
+- [x] Task 4: Web client hover markers per dimension
   - Notes: In `app.js`, feature-detect marker data (fetch markers JSON,
     tolerate 404/empty), draw Leaflet markers for the active dimension,
     bind hover tooltip/popup showing sign text or player detail, and swap
@@ -56,7 +56,7 @@
   - Done when: manual demo (`--serve --open`) shows hover popups and
     dimension switching updates markers (spec AC 3, 4).
 
-- [ ] Task 5: Final verification against spec AC
+- [x] Task 5: Final verification against spec AC
   - Notes: Run fmt, clippy `-D warnings`, full test suite; pixel-diff a
     render against a pre-change baseline; demo the viewer end to end.
   - Done when: spec AC 1-7 all verified.

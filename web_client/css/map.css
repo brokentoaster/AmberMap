@@ -191,3 +191,20 @@ html, body {
 .layer-selector.hidden {
     display: none;
 }
+
+
+.sign-marker-icon {
+    background: transparent;
+    border: none;
+}
+
+.sign-marker {
+    width: 18px;
+    height: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.6));
+    cursor: pointer;
+}
