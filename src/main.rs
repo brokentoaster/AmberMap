@@ -68,6 +68,12 @@ enum Commands {
         #[arg(long, help = "Disable 2.5D hillshading")]
         no_hillshading: bool,
 
+        #[arg(
+            long,
+            help = "Reduce memory usage: prune the database cache and build the zoom pyramid from saved tiles on disk"
+        )]
+        low_memory: bool,
+
         #[arg(short = 's', long, help = "Start web server after rendering")]
         serve: bool,
 
@@ -199,6 +205,7 @@ fn main() {
             format,
             threads,
             no_hillshading,
+            low_memory,
             serve,
             port,
             bind,
@@ -221,6 +228,7 @@ fn main() {
                     format: tile_fmt,
                     threads,
                     enable_hillshading: !no_hillshading,
+                    low_memory,
                 };
 
                 let thread_count = if threads == 0 {

@@ -21,11 +21,12 @@ use crate::raster::chunk_raster::rasterize_chunk;
 use crate::raster::colormap::ColorMap;
 use crate::tiler::compositor::TileBuffer;
 use crate::tiler::coordinates::TileCoord;
-use crate::tiler::encoder::{save_tile, TileFormat};
+use crate::tiler::encoder::{load_tile, save_tile, tile_path, TileFormat};
 use crate::tiler::pyramid::downsample_quadrants;
 use rayon::prelude::*;
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::fs;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
@@ -38,6 +39,7 @@ pub struct RenderOptions {
     pub format: TileFormat,
     pub threads: usize,
     pub enable_hillshading: bool,
+    pub low_memory: bool,
 }
 
 pub struct RenderStats {
@@ -56,7 +58,10 @@ pub fn render_world_map(options: RenderOptions) -> Result<RenderStats> {
             .build_global();
     }
 
-    let db = WorldDb::open(&options.world_path)?;
+    let mut db = WorldDb::open(&options.world_path)?;
+    if options.low_memory {
+        db.prune_to_chunk_keys();
+    }
     let chunks = db.scan_chunks(options.dimension);
 
     if chunks.is_empty() {
@@ -92,6 +97,7 @@ pub fn render_world_map(options: RenderOptions) -> Result<RenderStats> {
     let total_tiles_count = AtomicUsize::new(0);
 
     let base_tiles_map: Mutex<HashMap<TileCoord, TileBuffer>> = Mutex::new(HashMap::new());
+    let base_tile_bounds: Mutex<Option<(i32, i32, i32, i32)>> = Mutex::new(None);
 
     tile_groups
         .par_iter()
@@ -120,10 +126,29 @@ pub fn render_world_map(options: RenderOptions) -> Result<RenderStats> {
                 )?;
 
                 total_tiles_count.fetch_add(1, Ordering::Relaxed);
-                let mut map = base_tiles_map
-                    .lock()
-                    .map_err(|_| AmberError::Io(std::io::Error::other("lock poisoned")))?;
-                map.insert(tile_coord, tile_buf);
+
+                {
+                    let mut b = base_tile_bounds
+                        .lock()
+                        .map_err(|_| AmberError::Io(std::io::Error::other("lock poisoned")))?;
+                    let next = match *b {
+                        None => (tile_coord.x, tile_coord.y, tile_coord.x, tile_coord.y),
+                        Some((min_x, min_y, max_x, max_y)) => (
+                            min_x.min(tile_coord.x),
+                            min_y.min(tile_coord.y),
+                            max_x.max(tile_coord.x),
+                            max_y.max(tile_coord.y),
+                        ),
+                    };
+                    *b = Some(next);
+                }
+
+                if !options.low_memory {
+                    let mut map = base_tiles_map
+                        .lock()
+                        .map_err(|_| AmberError::Io(std::io::Error::other("lock poisoned")))?;
+                    map.insert(tile_coord, tile_buf);
+                }
             }
 
             Ok(())
@@ -132,16 +157,10 @@ pub fn render_world_map(options: RenderOptions) -> Result<RenderStats> {
     let base_tiles_count = total_tiles_count.load(Ordering::Relaxed);
     let mut current_layer = base_tiles_map.into_inner().unwrap_or_default();
 
-    let (min_tx, max_tx, min_ty, max_ty) = if !current_layer.is_empty() {
-        (
-            current_layer.keys().map(|c| c.x).min().unwrap_or(0),
-            current_layer.keys().map(|c| c.x).max().unwrap_or(0),
-            current_layer.keys().map(|c| c.y).min().unwrap_or(0),
-            current_layer.keys().map(|c| c.y).max().unwrap_or(0),
-        )
-    } else {
-        (0, 0, 0, 0)
-    };
+    let (min_tx, max_tx, min_ty, max_ty) = base_tile_bounds
+        .into_inner()
+        .unwrap_or(None)
+        .unwrap_or((0, 0, 0, 0));
 
     let center_block_x = ((min_tx as i64 + max_tx as i64) * 128 + 128) as i32;
     let center_block_z = ((min_ty as i64 + max_ty as i64) * 128 + 128) as i32;
@@ -165,7 +184,11 @@ pub fn render_world_map(options: RenderOptions) -> Result<RenderStats> {
     let _ = std::fs::write(dim_dir.join("metadata.json"), &meta_json);
     let _ = std::fs::write(options.output_dir.join("metadata.json"), &meta_json);
 
-    if max_zoom > 0 {
+    if options.low_memory {
+        let disk_tiles =
+            build_pyramid_from_disk(&options.output_dir, dim_name, max_zoom, options.format)?;
+        total_tiles_count.fetch_add(disk_tiles, Ordering::Relaxed);
+    } else if max_zoom > 0 {
         for current_z in (1..=max_zoom).rev() {
             let parent_z = current_z - 1;
             let mut parent_coords: HashMap<(i32, i32), [Option<TileBuffer>; 4]> = HashMap::new();
@@ -231,4 +254,80 @@ pub fn render_world_map(options: RenderOptions) -> Result<RenderStats> {
         total_tiles: total_tiles_count.load(Ordering::Relaxed),
         elapsed: start_time.elapsed(),
     })
+}
+
+/// Builds the zoom pyramid by re-reading saved base tiles from disk instead
+/// of keeping them all in memory. Only one parent tile and its four children
+/// are resident at any time. Returns the number of parent tiles written.
+fn build_pyramid_from_disk(
+    output_dir: &Path,
+    dim_name: &str,
+    max_zoom: u8,
+    format: TileFormat,
+) -> Result<usize> {
+    let mut written = 0usize;
+
+    for parent_z in (0..max_zoom).rev() {
+        let child_z = parent_z + 1;
+        let child_dir = output_dir.join(dim_name).join(child_z.to_string());
+
+        let mut parents: HashMap<(i32, i32), Vec<TileCoord>> = HashMap::new();
+        for x_dir in fs::read_dir(&child_dir)?.flatten() {
+            let x: i32 = match x_dir.file_name().to_string_lossy().parse() {
+                Ok(v) => v,
+                Err(_) => continue,
+            };
+            for y_file in fs::read_dir(x_dir.path())?.flatten() {
+                let name = y_file.file_name().to_string_lossy().into_owned();
+                if !name.ends_with(format.extension()) {
+                    continue;
+                }
+                let y: i32 = match name
+                    .trim_end_matches(format.extension())
+                    .trim_end_matches('.')
+                    .parse()
+                {
+                    Ok(v) => v,
+                    Err(_) => continue,
+                };
+                let child = TileCoord::new(child_z, x, y);
+                if let Some(parent) = child.parent() {
+                    parents.entry((parent.x, parent.y)).or_default().push(child);
+                }
+            }
+        }
+
+        let dim_dir = output_dir.join(dim_name);
+        for ((px, py), children) in parents {
+            let parent_coord = TileCoord::new(parent_z, px, py);
+            let mut quads: [Option<TileBuffer>; 4] = [None, None, None, None];
+
+            for child in children {
+                let quad = child.quadrant_in_parent();
+                let quad_idx = match quad {
+                    (0, 0) => 0,
+                    (1, 0) => 1,
+                    (0, 1) => 2,
+                    _ => 3,
+                };
+                let path = tile_path(&dim_dir, dim_name, child, format);
+                quads[quad_idx] = load_tile(&path).ok();
+            }
+
+            let child_refs = [
+                quads[0].as_ref(),
+                quads[1].as_ref(),
+                quads[2].as_ref(),
+                quads[3].as_ref(),
+            ];
+            let parent_tile = downsample_quadrants(&child_refs);
+
+            if !parent_tile.is_empty() {
+                save_tile(&parent_tile, output_dir, dim_name, parent_coord, format)?;
+                written += 1;
+            }
+        }
+    }
+
+    Ok(written)
 }

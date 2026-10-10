@@ -65,6 +65,7 @@ ambermap render <WORLD> [OPTIONS]
 | `-f, --format <FMT>` | Tile format (`webp` or `png`) | `webp` |
 | `-t, --threads <N>` | Thread pool size (`0` = logical CPU count) | `0` |
 | `--no-hillshading` | Disable 2.5D topographic shading | `false` |
+| `--low-memory` | Prune DB cache and build the pyramid from saved tiles on disk (slower, much lower RAM) | `false` |
 | `-s, --serve` | Start embedded web server after rendering | `false` |
 | `-p, --port <PORT>` | Web server port | `8080` |
 | `-b, --bind <IP>` | Server bind address | `127.0.0.1` |

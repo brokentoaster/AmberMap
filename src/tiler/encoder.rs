@@ -14,7 +14,7 @@
  */
 
 use crate::core::error::{AmberError, Result};
-use crate::tiler::compositor::{TileBuffer, TILE_SIZE};
+use crate::tiler::compositor::{TileBuffer, TILE_BYTES, TILE_SIZE};
 use crate::tiler::coordinates::TileCoord;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -92,4 +92,37 @@ pub fn save_tile(
         .map_err(|e| AmberError::Io(std::io::Error::other(e)))?;
 
     Ok(target_path)
+}
+
+pub fn tile_path(
+    base_dir: impl AsRef<Path>,
+    dimension_name: &str,
+    coord: TileCoord,
+    format: TileFormat,
+) -> PathBuf {
+    base_dir
+        .as_ref()
+        .join(dimension_name)
+        .join(coord.zoom.to_string())
+        .join(coord.x.to_string())
+        .join(format!("{}.{}", coord.y, format.extension()))
+}
+
+pub fn load_tile(path: &Path) -> Result<TileBuffer> {
+    let img = image::open(path).map_err(|e| AmberError::Io(std::io::Error::other(e)))?;
+    let rgba = img.to_rgba8();
+    if rgba.dimensions() != (TILE_SIZE as u32, TILE_SIZE as u32) {
+        return Err(AmberError::Io(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!(
+                "tile {:?} has unexpected dimensions {:?}",
+                path,
+                rgba.dimensions()
+            ),
+        )));
+    }
+
+    let mut pixels = Box::new([0u8; TILE_BYTES]);
+    pixels.copy_from_slice(rgba.as_raw());
+    Ok(TileBuffer::from_raw(pixels))
 }

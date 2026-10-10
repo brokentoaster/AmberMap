@@ -112,3 +112,29 @@ fn test_pyramid_downsampling_alpha_weighted() {
     let p_br = (128 * TILE_SIZE + 128) * 4;
     assert_eq!(&parent.pixels[p_br..p_br + 4], &[0, 0, 0, 0]);
 }
+
+#[test]
+fn test_save_load_tile_roundtrip() {
+    use ambermap::tiler::encoder::{load_tile, save_tile, tile_path, TileFormat};
+
+    let dir = std::env::temp_dir().join(format!(
+        "ambermap_tile_roundtrip_{}_{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+
+    let mut buf = TileBuffer::new();
+    buf.pixels[0..4].copy_from_slice(&[200, 100, 50, 255]);
+
+    let coord = TileCoord::new(4, -2, 7);
+    save_tile(&buf, &dir, "overworld", coord, TileFormat::Png).unwrap();
+
+    let loaded = load_tile(&tile_path(&dir, "overworld", coord, TileFormat::Png)).unwrap();
+    assert_eq!(&loaded.pixels[0..4], &[200, 100, 50, 255]);
+    assert_eq!(loaded.pixels.len(), buf.pixels.len());
+
+    let _ = std::fs::remove_dir_all(&dir);
+}

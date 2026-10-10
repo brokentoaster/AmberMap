@@ -71,6 +71,19 @@ impl WorldDb {
         })
     }
 
+    /// Drops every entry that is not needed for chunk rendering (entities,
+    /// block entities, misc prefixed keys, legacy terrain, ...). Only keys
+    /// relevant to `get_chunk` survive: SubChunkPrefix, Data3D, Version.
+    pub fn prune_to_chunk_keys(&mut self) {
+        self.entries.retain(|k, _| {
+            matches!(DbKey::parse(k), Ok(key) if matches!(
+                key.tag,
+                KeyTag::SubChunkPrefix | KeyTag::Data3D | KeyTag::Version
+            ))
+        });
+        self.entries.shrink_to_fit();
+    }
+
     pub fn scan_chunks(&self, dimension: Dimension) -> Vec<ChunkPos> {
         let mut chunks = HashSet::new();
 
