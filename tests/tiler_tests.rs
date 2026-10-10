@@ -112,3 +112,46 @@ fn test_pyramid_downsampling_alpha_weighted() {
     let p_br = (128 * TILE_SIZE + 128) * 4;
     assert_eq!(&parent.pixels[p_br..p_br + 4], &[0, 0, 0, 0]);
 }
+
+#[test]
+fn test_layered_tile_path_layout() {
+    use ambermap::tiler::encoder::{save_tile, save_tile_layered, TileFormat};
+
+    let dir = std::env::temp_dir().join(format!(
+        "ambermap_layered_path_{}_{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+
+    let buf = TileBuffer::new();
+    let coord = TileCoord::new(4, -2, 7);
+
+    let legacy = save_tile(&buf, &dir, "overworld", coord, TileFormat::Png).unwrap();
+    assert_eq!(
+        legacy,
+        dir.join("overworld").join("4").join("-2").join("7.png")
+    );
+
+    let layered = save_tile_layered(
+        &buf,
+        &dir,
+        "overworld",
+        Some("y0-63"),
+        coord,
+        TileFormat::Png,
+    )
+    .unwrap();
+    assert_eq!(
+        layered,
+        dir.join("overworld")
+            .join("y0-63")
+            .join("4")
+            .join("-2")
+            .join("7.png")
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}

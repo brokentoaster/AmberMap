@@ -16,7 +16,7 @@
 use crate::leveldb::reader::ChunkData;
 use crate::raster::colormap::ColorMap;
 use crate::raster::hillshade::apply_hillshade;
-use crate::raster::traverser::traverse_chunk;
+use crate::raster::traverser::traverse_chunk_y_range;
 
 pub struct ChunkRasterResult {
     pub pixels: [u8; 16 * 16 * 4],
@@ -28,7 +28,16 @@ pub fn rasterize_chunk(
     colormap: &ColorMap,
     enable_hillshade: bool,
 ) -> ChunkRasterResult {
-    let scan = traverse_chunk(chunk, colormap);
+    rasterize_chunk_y_range(chunk, colormap, enable_hillshade, None)
+}
+
+pub fn rasterize_chunk_y_range(
+    chunk: &ChunkData,
+    colormap: &ColorMap,
+    enable_hillshade: bool,
+    y_range: Option<(i16, i16)>,
+) -> ChunkRasterResult {
+    let scan = traverse_chunk_y_range(chunk, colormap, y_range);
     let mut pixels = scan.pixels;
     let heightmap = scan.heightmap;
 

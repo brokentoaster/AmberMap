@@ -17,11 +17,11 @@ use crate::core::coordinates::ChunkPos;
 use crate::core::error::{AmberError, Result};
 use crate::leveldb::keys::Dimension;
 use crate::leveldb::reader::WorldDb;
-use crate::raster::chunk_raster::rasterize_chunk;
+use crate::raster::chunk_raster::rasterize_chunk_y_range;
 use crate::raster::colormap::ColorMap;
 use crate::tiler::compositor::TileBuffer;
 use crate::tiler::coordinates::TileCoord;
-use crate::tiler::encoder::{save_tile, TileFormat};
+use crate::tiler::encoder::{save_tile_layered, TileFormat};
 use crate::tiler::pyramid::downsample_quadrants;
 use rayon::prelude::*;
 use std::collections::HashMap;
@@ -38,6 +38,28 @@ pub struct RenderOptions {
     pub format: TileFormat,
     pub threads: usize,
     pub enable_hillshading: bool,
+    /// When set, render only the blocks inside this Y slice into
+    /// `output/<dim>/<layer>/…` instead of the full surface map.
+    pub layer: Option<RenderLayer>,
+}
+
+#[derive(Clone, Debug)]
+pub struct RenderLayer {
+    pub id: String,
+    pub label: String,
+    pub y_min: i16,
+    pub y_max: i16,
+}
+
+impl RenderLayer {
+    pub fn from_range(y_min: i16, y_max: i16) -> Self {
+        Self {
+            id: format!("y{}-{}", y_min, y_max),
+            label: format!("Y {}..{}", y_min, y_max),
+            y_min,
+            y_max,
+        }
+    }
 }
 
 pub struct RenderStats {
@@ -76,8 +98,19 @@ pub fn render_world_map(options: RenderOptions) -> Result<RenderStats> {
     };
 
     let dim_dir = options.output_dir.join(dim_name);
-    let _ = std::fs::remove_dir_all(&dim_dir);
-    let _ = std::fs::create_dir_all(&dim_dir);
+    let meta_path = match &options.layer {
+        Some(layer) => {
+            let layer_dir = dim_dir.join(&layer.id);
+            let _ = std::fs::remove_dir_all(&layer_dir);
+            let _ = std::fs::create_dir_all(&layer_dir);
+            layer_dir.join("metadata.json")
+        }
+        None => {
+            let _ = std::fs::remove_dir_all(&dim_dir);
+            let _ = std::fs::create_dir_all(&dim_dir);
+            dim_dir.join("metadata.json")
+        }
+    };
 
     let mut tile_groups: HashMap<(i32, i32), Vec<ChunkPos>> = HashMap::new();
     for chunk in &chunks {
@@ -103,18 +136,24 @@ pub fn render_world_map(options: RenderOptions) -> Result<RenderStats> {
                 if let Ok(chunk_data) = db.get_chunk(*chunk_pos, options.dimension) {
                     if !chunk_data.subchunks.is_empty() {
                         let (ox, oy) = TileCoord::chunk_offset_in_tile(*chunk_pos);
-                        let raster =
-                            rasterize_chunk(&chunk_data, &colormap, options.enable_hillshading);
+                        let y_range = options.layer.as_ref().map(|l| (l.y_min, l.y_max));
+                        let raster = rasterize_chunk_y_range(
+                            &chunk_data,
+                            &colormap,
+                            options.enable_hillshading,
+                            y_range,
+                        );
                         tile_buf.blit_chunk(ox, oy, &raster.pixels);
                     }
                 }
             }
 
             if !tile_buf.is_empty() {
-                save_tile(
+                save_tile_layered(
                     &tile_buf,
                     &options.output_dir,
                     dim_name,
+                    options.layer.as_ref().map(|l| l.id.as_str()),
                     tile_coord,
                     options.format,
                 )?;
@@ -151,8 +190,23 @@ pub fn render_world_map(options: RenderOptions) -> Result<RenderStats> {
     let max_block_x = (max_tx + 1) * 256;
     let max_block_z = (max_ty + 1) * 256;
 
+    let (layer_id, layer_label, y_min, y_max) = match &options.layer {
+        Some(l) => (
+            l.id.as_str(),
+            l.label.as_str(),
+            l.y_min as i32,
+            l.y_max as i32,
+        ),
+        None => (
+            "surface",
+            "Surface",
+            surface_y_min(options.dimension),
+            surface_y_max(options.dimension),
+        ),
+    };
+
     let meta_json = format!(
-        r#"{{"center_x":{},"center_z":{},"min_block_x":{},"min_block_z":{},"max_block_x":{},"max_block_z":{},"max_zoom":{},"format":"{}"}}"#,
+        r#"{{"center_x":{},"center_z":{},"min_block_x":{},"min_block_z":{},"max_block_x":{},"max_block_z":{},"max_zoom":{},"format":"{}","layer_id":"{}","layer_label":"{}","y_min":{},"y_max":{}}}"#,
         center_block_x,
         center_block_z,
         min_block_x,
@@ -160,10 +214,16 @@ pub fn render_world_map(options: RenderOptions) -> Result<RenderStats> {
         max_block_x,
         max_block_z,
         max_zoom,
-        options.format.extension()
+        options.format.extension(),
+        layer_id,
+        layer_label,
+        y_min,
+        y_max
     );
-    let _ = std::fs::write(dim_dir.join("metadata.json"), &meta_json);
-    let _ = std::fs::write(options.output_dir.join("metadata.json"), &meta_json);
+    let _ = std::fs::write(&meta_path, &meta_json);
+    if options.layer.is_none() {
+        let _ = std::fs::write(options.output_dir.join("metadata.json"), &meta_json);
+    }
 
     if max_zoom > 0 {
         for current_z in (1..=max_zoom).rev() {
@@ -203,10 +263,11 @@ pub fn render_world_map(options: RenderOptions) -> Result<RenderStats> {
                     let parent_coord = TileCoord::new(parent_z, px, py);
 
                     if !parent_tile.is_empty() {
-                        save_tile(
+                        save_tile_layered(
                             &parent_tile,
                             &options.output_dir,
                             dim_name,
+                            options.layer.as_ref().map(|l| l.id.as_str()),
                             parent_coord,
                             options.format,
                         )?;
@@ -231,4 +292,19 @@ pub fn render_world_map(options: RenderOptions) -> Result<RenderStats> {
         total_tiles: total_tiles_count.load(Ordering::Relaxed),
         elapsed: start_time.elapsed(),
     })
+}
+
+/// Nominal renderable Y extent per dimension, used for surface-layer labels.
+fn surface_y_min(dimension: Dimension) -> i32 {
+    match dimension {
+        Dimension::Overworld => -64,
+        Dimension::Nether | Dimension::TheEnd => 0,
+    }
+}
+
+fn surface_y_max(dimension: Dimension) -> i32 {
+    match dimension {
+        Dimension::Overworld => 319,
+        Dimension::Nether | Dimension::TheEnd => 255,
+    }
 }

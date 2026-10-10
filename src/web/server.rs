@@ -29,17 +29,124 @@ pub struct ServerConfig {
     pub max_zoom: u8,
 }
 
-pub fn status_metadata(tiles_dir: &Path, dim: &str) -> String {
+pub fn status_metadata(tiles_dir: &Path, dim: &str, layer: &str) -> String {
     if !dim.is_empty() {
-        let dim_meta = tiles_dir.join(dim).join("metadata.json");
+        let dim_dir = tiles_dir.join(dim);
+
+        if !layer.is_empty() && layer != "surface" {
+            let layer_meta = dim_dir.join(layer).join("metadata.json");
+            if let Ok(meta) = std::fs::read_to_string(&layer_meta) {
+                return meta;
+            }
+            return format!(
+                r#"{{"status":"ok","rendered":false,"dim":"{}","layer_id":"{}"}}"#,
+                dim, layer
+            );
+        }
+
+        let dim_meta = dim_dir.join("metadata.json");
         if let Ok(meta) = std::fs::read_to_string(&dim_meta) {
-            return meta;
+            let layers = discover_layers(&dim_dir, &meta);
+            return inject_layers(&meta, &layers);
         }
     }
 
     match std::fs::read_to_string(tiles_dir.join("metadata.json")) {
         Ok(meta) => meta,
         Err(_) => r#"{"status":"ok","rendered":false}"#.to_string(),
+    }
+}
+
+/// Builds the `layers` array for a dimension: the surface entry from the
+/// dimension metadata, plus one entry per `<dim>/<layer>/metadata.json`.
+fn discover_layers(dim_dir: &Path, surface_meta: &str) -> Vec<String> {
+    let mut entries = Vec::new();
+
+    let surface = LayerInfo::from_metadata(surface_meta, "surface", "Surface");
+    if let Some(s) = surface {
+        entries.push(s.to_json());
+    }
+
+    if let Ok(read_dir) = std::fs::read_dir(dim_dir) {
+        for entry in read_dir.flatten() {
+            if !entry.path().is_dir() {
+                continue;
+            }
+            let meta_path = entry.path().join("metadata.json");
+            let meta = match std::fs::read_to_string(&meta_path) {
+                Ok(m) => m,
+                Err(_) => continue,
+            };
+            if let Some(info) =
+                LayerInfo::from_metadata(&meta, &entry.file_name().to_string_lossy(), "")
+            {
+                entries.push(info.to_json());
+            }
+        }
+    }
+
+    entries
+}
+
+struct LayerInfo {
+    id: String,
+    label: String,
+    y_min: i64,
+    y_max: i64,
+}
+
+impl LayerInfo {
+    /// Parses layer id/label/y_min/y_max out of a metadata JSON. Missing
+    /// fields fall back to the provided id and a generated label.
+    fn from_metadata(meta: &str, default_id: &str, default_label: &str) -> Option<Self> {
+        let get = |key: &str| -> Option<String> {
+            let needle = format!("\"{}\":", key);
+            let start = meta.find(&needle)? + needle.len();
+            let rest = &meta[start..];
+            let rest = rest.trim_start();
+            if let Some(quoted) = rest.strip_prefix('"') {
+                let end = quoted.find('"')?;
+                Some(quoted[..end].to_string())
+            } else {
+                let end = rest.find([',', '}']).unwrap_or(rest.len());
+                Some(rest[..end].trim().to_string())
+            }
+        };
+
+        let id = get("layer_id").unwrap_or_else(|| default_id.to_string());
+        let label = get("layer_label").unwrap_or_default();
+        let label = if label.is_empty() {
+            default_label.to_string()
+        } else {
+            label
+        };
+        if id.is_empty() {
+            return None;
+        }
+        let y_min = get("y_min").and_then(|v| v.parse().ok()).unwrap_or(0);
+        let y_max = get("y_max").and_then(|v| v.parse().ok()).unwrap_or(0);
+
+        Some(Self {
+            id,
+            label,
+            y_min,
+            y_max,
+        })
+    }
+
+    fn to_json(&self) -> String {
+        format!(
+            r#"{{"id":"{}","label":"{}","y_min":{},"y_max":{}}}"#,
+            self.id, self.label, self.y_min, self.y_max
+        )
+    }
+}
+
+fn inject_layers(meta: &str, layers: &[String]) -> String {
+    let array = format!(r#""layers":[{}]"#, layers.join(","));
+    match meta.rfind('}') {
+        Some(pos) => format!("{},{}}}", &meta[..pos], array),
+        None => format!("{{{}}}", array),
     }
 }
 
@@ -67,11 +174,13 @@ pub fn start_server(config: ServerConfig) -> Result<()> {
 
         if path == "/api/status" {
             let query = raw_url.split('?').nth(1).unwrap_or("");
-            let dim = query
-                .split('&')
-                .find_map(|p| p.strip_prefix("dim="))
-                .unwrap_or("");
-            let json_body = status_metadata(&config.tiles_dir, dim);
+            let param = |name: &str| {
+                query
+                    .split('&')
+                    .find_map(|p| p.strip_prefix(&format!("{}=", name)))
+                    .unwrap_or("")
+            };
+            let json_body = status_metadata(&config.tiles_dir, param("dim"), param("layer"));
             let response = Response::from_string(json_body)
                 .with_header(
                     Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..]).unwrap(),

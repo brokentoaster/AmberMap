@@ -1,5 +1,7 @@
 (function () {
     let currentDimension = 'overworld';
+    let currentLayer = 'surface';
+    let availableLayers = null;
     let tileFormat = 'webp';
     let maxZoom = 4;
     let centerLat = 0;
@@ -10,9 +12,10 @@
     let map = null;
     let tileLayer = null;
 
-    function loadDimension(dim) {
+    function loadDimension(dim, layer) {
         currentDimension = dim;
-        return fetch('/api/status?dim=' + encodeURIComponent(dim))
+        const layerParam = layer ? '&layer=' + encodeURIComponent(layer) : '';
+        return fetch('/api/status?dim=' + encodeURIComponent(dim) + layerParam)
             .then(res => res.json())
             .then(data => {
                 if (data.format) {
@@ -42,6 +45,23 @@
                 centerLat = 0;
                 centerLng = 0;
                 worldBounds = null;
+            })
+            .then(() => {
+                if (!layer) {
+                    return fetch('/api/status?dim=' + encodeURIComponent(dim))
+                        .then(res => res.json())
+                        .then(status => {
+                            availableLayers = Array.isArray(status.layers) && status.layers.length > 0
+                                ? status.layers
+                                : null;
+                            if (availableLayers && !availableLayers.some(l => l.id === currentLayer)) {
+                                currentLayer = 'surface';
+                            }
+                        })
+                        .catch(() => {
+                            availableLayers = null;
+                        });
+                }
             })
             .then(() => {
                 initMap();
@@ -79,7 +99,8 @@
                 const z = Math.min(coords.z, maxZoom);
                 const x = coords.x;
                 const y = coords.y;
-                return `/tiles/${currentDimension}/${z}/${x}/${y}.${tileFormat}?t=${cacheBuster}`;
+                const layerSeg = currentLayer === 'surface' ? '' : currentLayer + '/';
+                return `/tiles/${currentDimension}/${layerSeg}${z}/${x}/${y}.${tileFormat}?t=${cacheBuster}`;
             }
         });
 
@@ -127,6 +148,37 @@
         document.querySelectorAll('.dim-btn').forEach(btn => {
             btn.classList.toggle('active', btn.dataset.dim === currentDimension);
         });
+
+        updateLayerSelector();
+    }
+
+    function updateLayerSelector() {
+        const sel = document.getElementById('layer-selector');
+        if (!sel) {
+            return;
+        }
+        if (!availableLayers || availableLayers.length < 2) {
+            sel.classList.add('hidden');
+            return;
+        }
+        sel.classList.remove('hidden');
+        sel.innerHTML = '';
+        availableLayers.forEach(l => {
+            const btn = document.createElement('button');
+            btn.className = 'dim-btn layer-btn';
+            btn.dataset.layer = l.id;
+            btn.textContent = l.label || l.id;
+            btn.classList.toggle('active', l.id === currentLayer);
+            btn.addEventListener('click', function () {
+                if (this.dataset.layer === currentLayer) {
+                    return;
+                }
+                currentLayer = this.dataset.layer;
+                cacheBuster = Date.now();
+                loadDimension(currentDimension, currentLayer);
+            });
+            sel.appendChild(btn);
+        });
     }
 
     document.querySelectorAll('.dim-btn').forEach(btn => {
@@ -136,6 +188,7 @@
             }
             document.querySelectorAll('.dim-btn').forEach(b => b.classList.remove('active'));
             this.classList.add('active');
+            currentLayer = 'surface';
             cacheBuster = Date.now();
             loadDimension(this.dataset.dim);
         });

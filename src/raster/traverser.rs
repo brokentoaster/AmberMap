@@ -22,7 +22,18 @@ pub struct ColumnScanResult {
     pub heightmap: [i16; 16 * 16],
 }
 
+/// Renders a full column scan from the top of the world down.
 pub fn traverse_chunk(chunk: &ChunkData, colormap: &ColorMap) -> ColumnScanResult {
+    traverse_chunk_y_range(chunk, colormap, None)
+}
+
+/// Renders a column scan restricted to an inclusive block-Y range. Blocks
+/// outside `[y_min, y_max]` are treated as air; `None` scans the full range.
+pub fn traverse_chunk_y_range(
+    chunk: &ChunkData,
+    colormap: &ColorMap,
+    y_range: Option<(i16, i16)>,
+) -> ColumnScanResult {
     let mut pixels = [0u8; 16 * 16 * 4];
     let mut heightmap = [0i16; 16 * 16];
 
@@ -43,6 +54,12 @@ pub fn traverse_chunk(chunk: &ChunkData, colormap: &ColorMap) -> ColumnScanResul
 
                 for local_y in (0..16).rev() {
                     let world_y = base_y + (local_y as i32);
+
+                    if let Some((y_min, y_max)) = y_range {
+                        if world_y < y_min as i32 || world_y > y_max as i32 {
+                            continue;
+                        }
+                    }
 
                     // inspect layers top-to-bottom (layer 1 waterlogged before layer 0 base)
                     for layer in subchunk.layers.iter().rev() {

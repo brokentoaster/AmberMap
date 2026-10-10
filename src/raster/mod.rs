@@ -18,7 +18,7 @@ pub mod colormap;
 pub mod hillshade;
 pub mod traverser;
 
-pub use chunk_raster::{rasterize_chunk, ChunkRasterResult};
+pub use chunk_raster::{rasterize_chunk, rasterize_chunk_y_range, ChunkRasterResult};
 pub use colormap::{BlockColor, ColorMap};
 pub use hillshade::{apply_hillshade, compute_light_factor};
-pub use traverser::{traverse_chunk, ColumnScanResult};
+pub use traverser::{traverse_chunk, traverse_chunk_y_range, ColumnScanResult};

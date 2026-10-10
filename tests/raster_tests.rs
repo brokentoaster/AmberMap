@@ -170,6 +170,64 @@ fn test_overworld_bedrock_still_renders() {
 }
 
 #[test]
+fn test_y_range_filtering_ignores_blocks_above_range() {
+    use ambermap::raster::traverser::traverse_chunk_y_range;
+
+    let colormap = ColorMap::new();
+
+    let subchunk = create_mock_subchunk(&[
+        (0, "minecraft:stone"),
+        (5, "minecraft:diamond_ore"),
+        (15, "minecraft:grass_block"),
+    ]);
+
+    let chunk = ChunkData {
+        chunk_pos: ChunkPos::new(0, 0),
+        dimension: Dimension::Overworld,
+        version: Some(42),
+        subchunks: vec![(0, subchunk)],
+    };
+
+    let result = traverse_chunk_y_range(&chunk, &colormap, Some((0, 10)));
+
+    // grass at y=15 is outside the range; surface becomes diamond_ore
+    // [114, 142, 140] over stone, terminated at y=5
+    assert_eq!(result.heightmap[0], 5);
+    assert_eq!(result.pixels[3], 255);
+    assert_eq!(result.pixels[0], 114);
+    assert_eq!(result.pixels[1], 142);
+    assert_eq!(result.pixels[2], 140);
+}
+
+#[test]
+fn test_nether_y_range_slice_skips_roof_and_out_of_range() {
+    use ambermap::raster::traverser::traverse_chunk_y_range;
+
+    let colormap = ColorMap::new();
+
+    let roof = create_mock_subchunk(&[(0, "minecraft:bedrock")]);
+    let upper = create_mock_subchunk(&[(0, "minecraft:netherrack")]);
+    let lower = create_mock_subchunk(&[(0, "minecraft:glowstone")]);
+
+    let chunk = ChunkData {
+        chunk_pos: ChunkPos::new(0, 0),
+        dimension: Dimension::Nether,
+        version: Some(42),
+        subchunks: vec![(2, lower), (7, upper), (12, roof)],
+    };
+
+    // slice y 32..47 => only subchunk 2 (glowstone at world y=32)
+    let result = traverse_chunk_y_range(&chunk, &colormap, Some((32, 47)));
+
+    assert_eq!(result.heightmap[0], 32);
+    // glowstone [189, 147, 94, 255]
+    assert_eq!(result.pixels[0], 189);
+    assert_eq!(result.pixels[1], 147);
+    assert_eq!(result.pixels[2], 94);
+    assert_eq!(result.pixels[3], 255);
+}
+
+#[test]
 fn test_chunk_rasterize_pipeline() {
     let colormap = ColorMap::new();
     let subchunk = create_mock_subchunk(&[(0, "minecraft:grass_block")]);

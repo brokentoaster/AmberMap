@@ -60,15 +60,26 @@ pub fn save_tile(
     coord: TileCoord,
     format: TileFormat,
 ) -> Result<PathBuf> {
+    save_tile_layered(buffer, base_dir, dimension_name, None, coord, format)
+}
+
+pub fn save_tile_layered(
+    buffer: &TileBuffer,
+    base_dir: impl AsRef<Path>,
+    dimension_name: &str,
+    layer_id: Option<&str>,
+    coord: TileCoord,
+    format: TileFormat,
+) -> Result<PathBuf> {
     let zoom_str = coord.zoom.to_string();
     let x_str = coord.x.to_string();
     let file_name = format!("{}.{}", coord.y, format.extension());
 
-    let target_dir = base_dir
-        .as_ref()
-        .join(dimension_name)
-        .join(zoom_str)
-        .join(x_str);
+    let dim_dir = base_dir.as_ref().join(dimension_name);
+    let target_dir = match layer_id {
+        Some(layer) => dim_dir.join(layer).join(zoom_str).join(x_str),
+        None => dim_dir.join(zoom_str).join(x_str),
+    };
 
     fs::create_dir_all(&target_dir)?;
 

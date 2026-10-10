@@ -182,3 +182,12 @@ html, body {
     font-weight: 600;
     color: var(--text-primary);
 }
+
+.layer-selector {
+    border-left: 1px solid rgba(148, 163, 184, 0.2);
+    padding-left: 8px;
+}
+
+.layer-selector.hidden {
+    display: none;
+}

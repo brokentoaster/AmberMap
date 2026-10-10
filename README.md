@@ -65,6 +65,7 @@ ambermap render <WORLD> [OPTIONS]
 | `-f, --format <FMT>` | Tile format (`webp` or `png`) | `webp` |
 | `-t, --threads <N>` | Thread pool size (`0` = logical CPU count) | `0` |
 | `--no-hillshading` | Disable 2.5D topographic shading | `false` |
+| `--layers <RANGES>` | Render Y-slice layers in addition to the surface, e.g. `0:63,-64:-1` (inclusive block-Y ranges, comma separated). Tiles land under `<dim>/<layer>/`, viewable via the web UI layer selector | none |
 | `-s, --serve` | Start embedded web server after rendering | `false` |
 | `-p, --port <PORT>` | Web server port | `8080` |
 | `-b, --bind <IP>` | Server bind address | `127.0.0.1` |

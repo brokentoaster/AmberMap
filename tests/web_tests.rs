@@ -21,26 +21,56 @@ fn test_status_metadata_per_dimension() {
     let _ = std::fs::remove_dir_all(&base);
     std::fs::create_dir_all(base.join("overworld")).unwrap();
     std::fs::create_dir_all(base.join("nether")).unwrap();
+    std::fs::create_dir_all(base.join("overworld").join("y0-63")).unwrap();
 
     std::fs::write(
         base.join("overworld").join("metadata.json"),
-        r#"{"center_x":10,"max_zoom":4}"#,
+        r#"{"center_x":10,"max_zoom":4,"layer_id":"surface","layer_label":"Surface","y_min":-64,"y_max":319}"#,
+    )
+    .unwrap();
+    std::fs::write(
+        base.join("overworld")
+            .join("y0-63")
+            .join("metadata.json"),
+        r#"{"center_x":10,"max_zoom":4,"layer_id":"y0-63","layer_label":"Y 0..63","y_min":0,"y_max":63}"#,
     )
     .unwrap();
     std::fs::write(
         base.join("nether").join("metadata.json"),
-        r#"{"center_x":99,"max_zoom":2}"#,
+        r#"{"center_x":99,"max_zoom":2,"layer_id":"surface","y_min":0,"y_max":255}"#,
     )
     .unwrap();
 
-    assert!(status_metadata(&base, "overworld").contains(r#""center_x":10"#));
-    assert!(status_metadata(&base, "nether").contains(r#""center_x":99"#));
+    // dimension status gains a layers array listing surface + discovered layers
+    let overworld = status_metadata(&base, "overworld", "");
+    assert!(overworld.contains(r#""center_x":10"#));
+    assert!(overworld.contains(r#""layers":["#));
+    assert!(overworld.contains(r#"{"id":"surface","label":"Surface","y_min":-64,"y_max":319}"#));
+    assert!(overworld.contains(r#"{"id":"y0-63","label":"Y 0..63","y_min":0,"y_max":63}"#));
+    // must remain valid JSON: layers array closed once, single trailing brace
+    assert!(overworld.ends_with(r#"]}"#));
+    assert!(!overworld.contains("}}}}"));
 
-    let fallback = status_metadata(&base, "the_end");
+    // nether has no extra layer dirs: surface only
+    let nether = status_metadata(&base, "nether", "");
+    assert!(nether.contains(r#""center_x":99"#));
+    assert!(nether.contains(r#"{"id":"surface","label":"Surface","y_min":0,"y_max":255}"#));
+
+    // per-layer metadata
+    let slice = status_metadata(&base, "overworld", "y0-63");
+    assert!(slice.contains(r#""layer_id":"y0-63""#));
+    assert!(slice.contains(r#""y_max":63"#));
+
+    // unknown layer returns rendered:false stub
+    let missing = status_metadata(&base, "overworld", "y999-1000");
+    assert!(missing.contains(r#""rendered":false"#));
+
+    // surface layer resolves like the plain dimension metadata
+    let surface = status_metadata(&base, "overworld", "surface");
+    assert!(surface.contains(r#""center_x":10"#));
+
+    let fallback = status_metadata(&base, "the_end", "");
     assert!(fallback.contains(r#""rendered":false"#));
-
-    let no_meta_at_all = status_metadata(&base, "overworld");
-    assert!(no_meta_at_all.contains("center_x"));
 
     let _ = std::fs::remove_dir_all(&base);
 }

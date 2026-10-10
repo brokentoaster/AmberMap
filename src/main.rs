@@ -17,7 +17,7 @@ use ambermap::core::coordinates::ChunkPos;
 use ambermap::leveldb::keys::Dimension;
 use ambermap::leveldb::reader::WorldDb;
 use ambermap::raster::{rasterize_chunk, ColorMap};
-use ambermap::tiler::{render_world_map, RenderOptions, TileFormat};
+use ambermap::tiler::{render_world_map, RenderLayer, RenderOptions, TileFormat};
 use ambermap::web::{start_server, ServerConfig};
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
@@ -67,6 +67,13 @@ enum Commands {
 
         #[arg(long, help = "Disable 2.5D hillshading")]
         no_hillshading: bool,
+
+        #[arg(
+            long,
+            value_name = "RANGES",
+            help = "Render Y-slice layers in addition to the surface, e.g. '0:63,-64:-1' (inclusive block-Y ranges, comma separated)"
+        )]
+        layers: Option<String>,
 
         #[arg(short = 's', long, help = "Start web server after rendering")]
         serve: bool,
@@ -174,6 +181,41 @@ fn parse_dimension(dim: &str) -> Dimension {
     }
 }
 
+fn parse_layer_ranges(spec: &str) -> Result<Vec<RenderLayer>, String> {
+    let mut layers = Vec::new();
+    for part in spec.split(',') {
+        let part = part.trim();
+        if part.is_empty() {
+            continue;
+        }
+        let (min_s, max_s) = part.split_once(':').ok_or_else(|| {
+            format!(
+                "invalid layer range {:?}: expected '<y_start>:<y_end>'",
+                part
+            )
+        })?;
+        let y_min: i16 = min_s
+            .trim()
+            .parse()
+            .map_err(|_| format!("invalid Y start {:?} in range {:?}", min_s, part))?;
+        let y_max: i16 = max_s
+            .trim()
+            .parse()
+            .map_err(|_| format!("invalid Y end {:?} in range {:?}", max_s, part))?;
+        if y_min > y_max {
+            return Err(format!(
+                "layer range {:?}: start {} is greater than end {}",
+                part, y_min, y_max
+            ));
+        }
+        layers.push(RenderLayer::from_range(y_min, y_max));
+    }
+    if layers.is_empty() {
+        return Err("--layers given but no ranges parsed".to_string());
+    }
+    Ok(layers)
+}
+
 #[allow(clippy::manual_is_multiple_of)]
 fn format_number(n: usize) -> String {
     let s = n.to_string();
@@ -199,6 +241,7 @@ fn main() {
             format,
             threads,
             no_hillshading,
+            layers,
             serve,
             port,
             bind,
@@ -209,65 +252,102 @@ fn main() {
                 _ => vec![parse_dimension(&dimension)],
             };
             let tile_fmt = TileFormat::from_str(&format);
+            let extra_layers = match &layers {
+                Some(spec) => match parse_layer_ranges(spec) {
+                    Ok(l) => l,
+                    Err(e) => {
+                        eprintln!("[error] {}", e);
+                        std::process::exit(1);
+                    }
+                },
+                None => Vec::new(),
+            };
 
             for dim in dims {
-                println!("[info] Scanning database for {:?} chunks...", dim);
+                let mut passes: Vec<Option<RenderLayer>> = vec![None];
+                passes.extend(extra_layers.iter().cloned().map(Some));
 
-                let options = RenderOptions {
-                    world_path: world.clone(),
-                    output_dir: output.clone(),
-                    dimension: dim,
-                    zoom_levels: zoom_levels.max(1),
-                    format: tile_fmt,
-                    threads,
-                    enable_hillshading: !no_hillshading,
-                };
-
-                let thread_count = if threads == 0 {
-                    rayon::current_num_threads()
-                } else {
-                    threads
-                };
-
-                println!(
-                    "[render] Processing base tiles (z={}) using {} threads...",
-                    zoom_levels.saturating_sub(1),
-                    thread_count
-                );
-
-                if zoom_levels > 1 {
-                    println!(
-                        "[render] Generating pyramid levels (z{} -> z0)...",
-                        zoom_levels.saturating_sub(2)
-                    );
-                }
-
-                match render_world_map(options) {
-                    Ok(stats) => {
-                        if stats.total_chunks == 0 {
-                            println!("[warn] No {:?} chunks found in this world, skipping", dim);
-                            continue;
-                        }
-
-                        let secs = stats.elapsed.as_secs_f64();
-                        let speed = if secs > 0.0 {
-                            (stats.total_chunks as f64) / secs
-                        } else {
-                            0.0
-                        };
-
-                        println!(
-                            "✓ {:?} render completed: {} tiles generated (from {} chunks) in {:.2?} ({:.0} chunks/sec)",
-                            dim,
-                            format_number(stats.total_tiles),
-                            format_number(stats.total_chunks),
-                            stats.elapsed,
-                            speed
-                        );
+                for pass_layer in passes {
+                    if let Some(layer) = &pass_layer {
+                        println!("[render] Rendering {:?} slice {}...", dim, layer.label);
                     }
-                    Err(e) => {
-                        eprintln!("[error] Render failed: {}", e);
-                        std::process::exit(1);
+
+                    let options = RenderOptions {
+                        world_path: world.clone(),
+                        output_dir: output.clone(),
+                        dimension: dim,
+                        zoom_levels: zoom_levels.max(1),
+                        format: tile_fmt,
+                        threads,
+                        enable_hillshading: !no_hillshading,
+                        layer: pass_layer.clone(),
+                    };
+
+                    let thread_count = if threads == 0 {
+                        rayon::current_num_threads()
+                    } else {
+                        threads
+                    };
+
+                    if pass_layer.is_none() {
+                        println!("[info] Scanning database for {:?} chunks...", dim);
+                        println!(
+                            "[render] Processing base tiles (z={}) using {} threads...",
+                            zoom_levels.saturating_sub(1),
+                            thread_count
+                        );
+
+                        if zoom_levels > 1 {
+                            println!(
+                                "[render] Generating pyramid levels (z{} -> z0)...",
+                                zoom_levels.saturating_sub(2)
+                            );
+                        }
+                    }
+
+                    match render_world_map(options) {
+                        Ok(stats) => {
+                            if stats.total_chunks == 0 && pass_layer.is_none() {
+                                println!(
+                                    "[warn] No {:?} chunks found in this world, skipping",
+                                    dim
+                                );
+                                break;
+                            }
+                            if stats.total_tiles == 0 && pass_layer.is_some() {
+                                println!(
+                                    "[warn] Slice {} of {:?} is empty, skipping",
+                                    pass_layer.as_ref().map(|l| l.label.as_str()).unwrap_or(""),
+                                    dim
+                                );
+                                continue;
+                            }
+
+                            let secs = stats.elapsed.as_secs_f64();
+                            let speed = if secs > 0.0 {
+                                (stats.total_chunks as f64) / secs
+                            } else {
+                                0.0
+                            };
+
+                            let what = match &pass_layer {
+                                None => format!("{:?}", dim),
+                                Some(l) => format!("{:?} {}", dim, l.label),
+                            };
+
+                            println!(
+                                "✓ {} render completed: {} tiles generated (from {} chunks) in {:.2?} ({:.0} chunks/sec)",
+                                what,
+                                format_number(stats.total_tiles),
+                                format_number(stats.total_chunks),
+                                stats.elapsed,
+                                speed
+                            );
+                        }
+                        Err(e) => {
+                            eprintln!("[error] Render failed: {}", e);
+                            std::process::exit(1);
+                        }
                     }
                 }
             }
