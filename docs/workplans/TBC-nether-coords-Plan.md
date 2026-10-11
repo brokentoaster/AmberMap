@@ -23,7 +23,7 @@
 
 ## Tasks
 
-- [ ] Task 1: Nether map at overworld scale with dual HUD coordinates
+- [x] Task 1: Nether map at overworld scale with dual HUD coordinates
   - Notes: extend the existing `AmberCRS` transformation with an 8x scale
     when the active dimension is `nether`; scale `center_x/center_z` and
     block bounds from `/api/status` by 8 before `fitBounds`/`setView`.
@@ -34,7 +34,7 @@
     `updateCoords`)
   - Done when: spec AC 1 and 6 — hovering the same portal on both maps
     shows matching overworld coords; pre-change worlds still render.
-- [ ] Task 2: Markers positioned at scaled coordinates with dual-coordinate
+- [x] Task 2: Markers positioned at scaled coordinates with dual-coordinate
   tooltips
   - Notes: in `renderMarkers`, map marker nether block coords through the
     same 8x transform as Task 1 (one shared helper for both CRS and
@@ -44,7 +44,7 @@
   - Touchpoints: `web_client/js/app.js` (`renderMarkers`)
   - Done when: spec AC 2 and 3 — a nether player appears at the
     overworld-equivalent spot with both coordinate sets in the tooltip.
-- [ ] Task 3: Viewport and zoom preserved across dimension and layer switches
+- [x] Task 3: Viewport and zoom preserved across dimension and layer switches
   - Notes: in the dimension and layer click handlers (and `loadDimension`),
     capture `map.getCenter()` and `map.getZoom()` before switching and
     restore after the new tile layer is added, instead of the unconditional
@@ -56,7 +56,7 @@
     handlers)
   - Done when: spec AC 4 and 5 — pan/zoom somewhere distinctive, switch
     dimension and layer, viewport unchanged.
-- [ ] Task 4: Final verification
+- [x] Task 4: Final verification
   - Notes: run `cargo fmt --check`, `cargo clippy -- -D warnings`,
     `cargo test` (should be untouched/green), and the manual demo in the
     spec Verification Plan.
