@@ -105,15 +105,25 @@
             if (!showPlayerMarkers) {
                 return;
             }
-            const showDualCoords = s !== 1;
-            const tooltip = showDualCoords
+            // Each player record is a snapshot in its own dimension's native
+            // coordinates. Convert to overworld-equivalent space (the shared
+            // coordinate space every dimension view is drawn in) so a player
+            // near a portal shows at the linked spot on every map.
+            const playerScale = player.dimension === 'nether' ? NETHER_SCALE : 1;
+            const isNetherPlayer = player.dimension === 'nether';
+            const tooltip = isNetherPlayer
                 ? `${player.name || 'Player'}<br>` +
                   `Nether X ${Math.round(player.x)} Y ${Math.round(player.y)} Z ${Math.round(player.z)}<br>` +
-                  `Overworld X ${Math.round(player.x * s)} Y ${Math.round(player.y) + 64} ` +
-                  `Z ${Math.round(player.z * s)}`
-                : `${player.name || 'Player'}<br>` +
-                  `X ${Math.round(player.x)} Y ${Math.round(player.y)} Z ${Math.round(player.z)}`;
-            L.circleMarker([player.z * s, player.x * s], {
+                  `Overworld X ${Math.round(player.x * NETHER_SCALE)} Y ${Math.round(player.y) + 64} ` +
+                  `Z ${Math.round(player.z * NETHER_SCALE)}`
+                : player.dimension === 'overworld'
+                    ? `${player.name || 'Player'}<br>` +
+                      `Overworld X ${Math.round(player.x)} Y ${Math.round(player.y)} Z ${Math.round(player.z)}<br>` +
+                      `Nether X ${Math.round(player.x / NETHER_SCALE)} Y ${Math.max(0, Math.round(player.y) - 64)} ` +
+                      `Z ${Math.round(player.z / NETHER_SCALE)}`
+                    : `${player.name || 'Player'}<br>` +
+                      `X ${Math.round(player.x)} Y ${Math.round(player.y)} Z ${Math.round(player.z)}`;
+            L.circleMarker([player.z * playerScale, player.x * playerScale], {
                 radius: 6,
                 color: '#38bdf8',
                 weight: 2,
