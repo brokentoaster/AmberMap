@@ -25,7 +25,7 @@
 
 ## Tasks
 
-- [ ] Task 1: Record the top visible block per column in the ray marcher
+- [x] Task 1: Record the top visible block per column in the ray marcher
   - Notes: extend `ColumnScanResult` with a per-column interned block
     index (`[u16; 256]`, sentinel for "none") and a chunk-local name
     table (`Vec<String>` of unique top-block names). At the point where
@@ -36,7 +36,7 @@
     `tests/raster_tests.rs`
   - Done when: synthetic raster tests assert top-block name per column
     (dirt/grass/water column cases), existing tests still pass.
-- [ ] Task 2: Emit per-base-tile block sidecar files
+- [x] Task 2: Emit per-base-tile block sidecar files
   - Notes: define the binary sidecar format (header + magic + version,
     name table, 256x256 u16 block-name indices, 256x256 i16 Y column,
     matching the spec default decisions). Aggregate in
@@ -52,13 +52,13 @@
   - Done when: synthetic render produces `blocks.bin` beside base tiles,
     round-trip parse (encode→parse) matches the expected grid and names,
     and no sidecars exist for non-base zoom levels.
-- [ ] Task 3: Serve sidecar files from the embedded server
+- [x] Task 3: Serve sidecar files from the embedded server
   - Notes: confirm the tile request path handling accepts `.bin` under
     `/tiles/...` and add a content-type mapping
     (`application/octet-stream`). No routing changes expected.
   - Touchpoints: `src/web/server.rs`, `tests/web_tests.rs`
   - Done when: synthetic web test fetches a sidecar path successfully.
-- [ ] Task 4: Client overlay showing block info under the cursor
+- [x] Task 4: Client overlay showing block info under the cursor
   - Notes: add an overlay element to `web_client/index.html` and styling
     to `css/map.css` (pointer-events: none, HUD-consistent look). In
     `app.js`: on `mousemove`, compute the cursor's world block coords
@@ -75,7 +75,7 @@
     `web_client/js/app.js`
   - Done when: spec AC 2, 4, 5, 7 observed in a manual demo with a real
     world.
-- [ ] Task 5: Final verification
+- [x] Task 5: Final verification
   - Notes: run `cargo fmt --check`, `cargo clippy -- -D warnings`,
     `cargo test`; manual demo per spec Verification Plan including
     dimension/layer switching and output-size comparison on a small
