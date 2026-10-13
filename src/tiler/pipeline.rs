@@ -20,9 +20,10 @@ use crate::leveldb::reader::WorldDb;
 use crate::markers::collect_markers;
 use crate::raster::chunk_raster::rasterize_chunk_y_range;
 use crate::raster::colormap::ColorMap;
+use crate::tiler::block_index::BlockIndex;
 use crate::tiler::compositor::TileBuffer;
 use crate::tiler::coordinates::TileCoord;
-use crate::tiler::encoder::{save_tile_layered, TileFormat};
+use crate::tiler::encoder::{save_block_index, save_tile_layered, TileFormat};
 use crate::tiler::pyramid::downsample_quadrants;
 use rayon::prelude::*;
 use std::collections::HashMap;
@@ -135,6 +136,8 @@ pub fn render_world_map_with_db(db: &WorldDb, options: RenderOptions) -> Result<
         .par_iter()
         .try_for_each(|(&(tx, ty), chunk_list)| -> Result<()> {
             let mut tile_buf = TileBuffer::new();
+            let mut block_index = BlockIndex::new();
+            let mut block_name_offset = 0usize;
             let tile_coord = TileCoord::new(max_zoom, tx, ty);
 
             for chunk_pos in chunk_list {
@@ -149,6 +152,8 @@ pub fn render_world_map_with_db(db: &WorldDb, options: RenderOptions) -> Result<
                             y_range,
                         );
                         tile_buf.blit_chunk(ox, oy, &raster.pixels);
+                        block_index.blit_chunk(ox, oy, &raster, block_name_offset);
+                        block_name_offset += raster.block_names.len();
                     }
                 }
             }
@@ -161,6 +166,14 @@ pub fn render_world_map_with_db(db: &WorldDb, options: RenderOptions) -> Result<
                     options.layer.as_ref().map(|l| l.id.as_str()),
                     tile_coord,
                     options.format,
+                )?;
+
+                save_block_index(
+                    &block_index,
+                    &options.output_dir,
+                    dim_name,
+                    options.layer.as_ref().map(|l| l.id.as_str()),
+                    tile_coord,
                 )?;
 
                 total_tiles_count.fetch_add(1, Ordering::Relaxed);

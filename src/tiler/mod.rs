@@ -13,12 +13,14 @@
  * Licensed under Apache-2.0 or MIT
  */
 
+pub mod block_index;
 pub mod compositor;
 pub mod coordinates;
 pub mod encoder;
 pub mod pipeline;
 pub mod pyramid;
 
+pub use block_index::BlockIndex;
 pub use compositor::{TileBuffer, TILE_BYTES, TILE_SIZE};
 pub use coordinates::TileCoord;
 pub use encoder::{save_tile, save_tile_layered, TileFormat};

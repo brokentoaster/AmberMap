@@ -14,6 +14,7 @@
  */
 
 use crate::core::error::{AmberError, Result};
+use crate::tiler::block_index::BlockIndex;
 use crate::tiler::compositor::{TileBuffer, TILE_SIZE};
 use crate::tiler::coordinates::TileCoord;
 use std::fs;
@@ -100,6 +101,35 @@ pub fn save_tile_layered(
     };
 
     img.save_with_format(&target_path, img_format)
+        .map_err(|e| AmberError::Io(std::io::Error::other(e)))?;
+
+    Ok(target_path)
+}
+
+/// Saves a block identity sidecar (`blocks.bin`) beside a base tile,
+/// mirroring the tile path layout so the client can derive the sidecar
+/// URL from the tile URL.
+pub fn save_block_index(
+    block_index: &BlockIndex,
+    base_dir: impl AsRef<Path>,
+    dimension_name: &str,
+    layer_id: Option<&str>,
+    coord: TileCoord,
+) -> Result<PathBuf> {
+    let zoom_str = coord.zoom.to_string();
+    let x_str = coord.x.to_string();
+    let file_name = format!("{}.blocks.bin", coord.y);
+
+    let dim_dir = base_dir.as_ref().join(dimension_name);
+    let target_dir = match layer_id {
+        Some(layer) => dim_dir.join(layer).join(zoom_str).join(x_str),
+        None => dim_dir.join(zoom_str).join(x_str),
+    };
+
+    fs::create_dir_all(&target_dir)?;
+
+    let target_path = target_dir.join(file_name);
+    fs::write(&target_path, block_index.to_bytes())
         .map_err(|e| AmberError::Io(std::io::Error::other(e)))?;
 
     Ok(target_path)

@@ -155,3 +155,84 @@ fn test_layered_tile_path_layout() {
 
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn test_block_index_round_trip() {
+    use ambermap::raster::chunk_raster::ChunkRasterResult;
+    use ambermap::raster::traverser::NO_BLOCK;
+    use ambermap::tiler::block_index::BlockIndex;
+
+    let mut index = BlockIndex::new();
+    let mut top_block = [NO_BLOCK; 256];
+    top_block[0] = 0;
+    let result = ChunkRasterResult {
+        pixels: [0; 16 * 16 * 4],
+        heightmap: [64; 256],
+        top_block,
+        block_names: vec!["minecraft:gold_block".to_string()],
+    };
+    index.blit_chunk(0, 0, &result, 0);
+
+    let bytes = index.to_bytes();
+    let parsed = BlockIndex::from_bytes(&bytes).expect("round trip");
+    let (name, y) = parsed.lookup(0, 0).expect("block at column");
+    assert_eq!(name, "minecraft:gold_block");
+    assert_eq!(y, 64);
+    assert!(parsed.lookup(1, 0).is_none());
+    assert!(parsed.lookup(255, 255).is_none());
+}
+
+#[test]
+fn test_block_index_rejects_bad_data() {
+    use ambermap::tiler::block_index::BlockIndex;
+    assert!(BlockIndex::from_bytes(b"NOPE").is_none());
+    assert!(BlockIndex::from_bytes(&[]).is_none());
+    let mut good = vec![b'A', b'M', b'B', b'I'];
+    good.extend(99u16.to_le_bytes());
+    assert!(BlockIndex::from_bytes(&good).is_none());
+}
+
+#[test]
+fn test_save_block_index_path_layout() {
+    use ambermap::tiler::block_index::BlockIndex;
+    use ambermap::tiler::coordinates::TileCoord;
+    use ambermap::tiler::encoder::save_block_index;
+    use ambermap::tiler::TileFormat;
+
+    let _ = TileFormat::Png;
+    let dir = std::env::temp_dir().join(format!(
+        "ambermap_block_index_{}_{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+
+    let index = BlockIndex::new();
+    let coord = TileCoord::new(4, -2, 7);
+
+    let path = save_block_index(&index, &dir, "overworld", None, coord).unwrap();
+    assert_eq!(
+        path,
+        dir.join("overworld")
+            .join("4")
+            .join("-2")
+            .join("7.blocks.bin")
+    );
+
+    let layered = save_block_index(&index, &dir, "overworld", Some("y0-63"), coord).unwrap();
+    assert_eq!(
+        layered,
+        dir.join("overworld")
+            .join("y0-63")
+            .join("4")
+            .join("-2")
+            .join("7.blocks.bin")
+    );
+
+    let bytes = std::fs::read(&path).unwrap();
+    assert!(BlockIndex::from_bytes(&bytes).is_some());
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
