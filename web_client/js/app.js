@@ -119,7 +119,9 @@
         return fetch(url)
             .then(res => {
                 if (!res.ok) {
-                    lastBlockIndexError = `HTTP ${res.status} for ${url}`;
+                    lastBlockIndexError = res.status === 404
+                        ? null
+                        : `HTTP ${res.status} for ${url}`;
                     return null;
                 }
                 lastBlockIndexError = null;
@@ -158,7 +160,7 @@
         loadBlockIndex(tileX, tileZ).then(index => {
             if (!index) {
                 el.textContent = 'no block';
-                el.title = lastBlockIndexError || 'no sidecar';
+                el.title = lastBlockIndexError || 'unrendered area';
                 return;
             }
             const localX = ((nativeX % 256) + 256) % 256;
