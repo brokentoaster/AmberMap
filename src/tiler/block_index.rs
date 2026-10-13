@@ -54,13 +54,7 @@ impl BlockIndex {
 
     /// Blits a 16x16 chunk result into the tile grid at the chunk's
     /// offset within the tile.
-    pub fn blit_chunk(
-        &mut self,
-        ox: usize,
-        oy: usize,
-        result: &ChunkRasterResult,
-        name_offset: usize,
-    ) {
+    pub fn blit_chunk(&mut self, ox: usize, oy: usize, result: &ChunkRasterResult) {
         for z in 0..16 {
             for x in 0..16 {
                 let col = z * 16 + x;
@@ -71,7 +65,7 @@ impl BlockIndex {
                 let Some(name) = result.block_names.get(idx as usize) else {
                     continue;
                 };
-                let interned = self.intern(name, name_offset);
+                let interned = self.intern(name);
                 let tile_col = (oy + z) * TILE_SIZE + (ox + x);
                 self.grid[tile_col] = interned;
                 self.top_y[tile_col] = result.heightmap[col];
@@ -79,12 +73,12 @@ impl BlockIndex {
         }
     }
 
-    fn intern(&mut self, name: &str, name_offset: usize) -> u16 {
+    fn intern(&mut self, name: &str) -> u16 {
         if let Some(i) = self.names.iter().position(|n| n == name) {
-            return (name_offset + i) as u16;
+            return i as u16;
         }
         self.names.push(name.to_string());
-        (name_offset + self.names.len() - 1) as u16
+        (self.names.len() - 1) as u16
     }
 
     pub fn is_empty(&self) -> bool {

@@ -137,7 +137,6 @@ pub fn render_world_map_with_db(db: &WorldDb, options: RenderOptions) -> Result<
         .try_for_each(|(&(tx, ty), chunk_list)| -> Result<()> {
             let mut tile_buf = TileBuffer::new();
             let mut block_index = BlockIndex::new();
-            let mut block_name_offset = 0usize;
             let tile_coord = TileCoord::new(max_zoom, tx, ty);
 
             for chunk_pos in chunk_list {
@@ -152,8 +151,7 @@ pub fn render_world_map_with_db(db: &WorldDb, options: RenderOptions) -> Result<
                             y_range,
                         );
                         tile_buf.blit_chunk(ox, oy, &raster.pixels);
-                        block_index.blit_chunk(ox, oy, &raster, block_name_offset);
-                        block_name_offset += raster.block_names.len();
+                        block_index.blit_chunk(ox, oy, &raster);
                     }
                 }
             }

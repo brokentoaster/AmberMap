@@ -171,7 +171,7 @@ fn test_block_index_round_trip() {
         top_block,
         block_names: vec!["minecraft:gold_block".to_string()],
     };
-    index.blit_chunk(0, 0, &result, 0);
+    index.blit_chunk(0, 0, &result);
 
     let bytes = index.to_bytes();
     let parsed = BlockIndex::from_bytes(&bytes).expect("round trip");
