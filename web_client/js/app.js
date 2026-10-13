@@ -381,6 +381,7 @@
                     `${Math.floor(netherZ / 16).toLocaleString()})`;
             }
             hudZoom.textContent = `Z: ${map.getZoom()}`;
+            updateBlockInfo(realBlockX, realBlockZ);
         }
 
         updateCoords({ lat: centerLat, lng: centerLng });
