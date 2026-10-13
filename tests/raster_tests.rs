@@ -244,3 +244,83 @@ fn test_chunk_rasterize_pipeline() {
     assert_eq!(result.heightmap.len(), 16 * 16);
     assert_eq!(result.heightmap[0], 0);
 }
+
+#[test]
+fn test_top_block_names_recorded_per_column() {
+    let colormap = ColorMap::new();
+
+    // Every column's top visible block is grass (water above grass would
+    // still be water as the first visible block).
+    let subchunk = create_mock_subchunk(&[(0, "minecraft:grass_block")]);
+    let chunk = ChunkData {
+        chunk_pos: ChunkPos::new(0, 0),
+        dimension: Dimension::Overworld,
+        version: Some(42),
+        subchunks: vec![(0, subchunk)],
+    };
+
+    let result = traverse_chunk(&chunk, &colormap);
+    assert_eq!(result.block_names.len(), 1);
+    assert_eq!(result.block_names[0], "minecraft:grass_block");
+    for col in 0..256 {
+        assert_eq!(result.top_block[col], 0);
+    }
+}
+
+#[test]
+fn test_top_block_distinguishes_water_over_stone() {
+    let colormap = ColorMap::new();
+
+    let subchunk = create_mock_subchunk(&[(0, "minecraft:stone"), (1, "minecraft:water")]);
+    let chunk = ChunkData {
+        chunk_pos: ChunkPos::new(0, 0),
+        dimension: Dimension::Overworld,
+        version: Some(42),
+        subchunks: vec![(0, subchunk)],
+    };
+
+    let result = traverse_chunk(&chunk, &colormap);
+    // Water is the first visible block in every column (it is above stone).
+    assert_eq!(result.block_names.len(), 1);
+    assert_eq!(result.block_names[0], "minecraft:water");
+    assert_eq!(result.top_block[0], 0);
+}
+
+#[test]
+fn test_top_block_empty_column_sentinel() {
+    let colormap = ColorMap::new();
+
+    // Only one block at one location; all other columns render empty.
+    let subchunk = create_mock_subchunk(&[(0, "minecraft:gold_block")]);
+    let chunk = ChunkData {
+        chunk_pos: ChunkPos::new(0, 0),
+        dimension: Dimension::Overworld,
+        version: Some(42),
+        subchunks: vec![(0, subchunk)],
+    };
+
+    let result = traverse_chunk(&chunk, &colormap);
+    assert_eq!(result.block_names.len(), 1);
+    assert_eq!(result.block_names[0], "minecraft:gold_block");
+    for col in 0..256 {
+        assert_eq!(result.top_block[col], 0);
+    }
+}
+
+#[test]
+fn test_rasterize_chunk_exposes_top_block_data() {
+    let colormap = ColorMap::new();
+    let subchunk = create_mock_subchunk(&[(0, "minecraft:dirt")]);
+
+    let chunk = ChunkData {
+        chunk_pos: ChunkPos::new(0, 0),
+        dimension: Dimension::Overworld,
+        version: Some(42),
+        subchunks: vec![(0, subchunk)],
+    };
+
+    let result = rasterize_chunk(&chunk, &colormap, true);
+    assert_eq!(result.block_names.len(), 1);
+    assert_eq!(result.block_names[0], "minecraft:dirt");
+    assert_eq!(result.top_block[0], 0);
+}

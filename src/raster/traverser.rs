@@ -21,7 +21,15 @@ use crate::subchunk::storage::SubChunkStorage;
 pub struct ColumnScanResult {
     pub pixels: [u8; 16 * 16 * 4],
     pub heightmap: [i16; 16 * 16],
+    /// Per column, the interned index into `block_names` of the first
+    /// visible block, or `NONE` when the column rendered empty.
+    pub top_block: [u16; 16 * 16],
+    /// Chunk-local interned top-block names, indexed by `top_block`.
+    pub block_names: Vec<String>,
 }
+
+/// Sentinel in `top_block` for a column with no visible block.
+pub const NO_BLOCK: u16 = u16::MAX;
 
 struct VoxelLut {
     color: BlockColor,
@@ -73,6 +81,12 @@ pub fn traverse_chunk_y_range(
 ) -> ColumnScanResult {
     let mut pixels = [0u8; 16 * 16 * 4];
     let mut heightmap = [0i16; 16 * 16];
+    let mut top_block = [NO_BLOCK; 16 * 16];
+    let mut block_names: Vec<String> = Vec::new();
+    // Resolved after the march so the hot loop stays allocation-free:
+    // palette indices recorded here, names interned once per column.
+    let mut top_palette: [u16; 16 * 16] = [NO_BLOCK; 16 * 16];
+    let mut top_palette_names: Vec<Option<String>> = Vec::new();
 
     // One lookup-table entry per palette index per layer, built once per
     // chunk instead of resolving block names per voxel.
@@ -148,6 +162,17 @@ pub fn traverse_chunk_y_range(
 
                         if recorded_height.is_none() {
                             recorded_height = Some(world_y as i16);
+                            let name = layer.palette.get(palette_idx).map(|b| b.name.clone());
+                            let intern = top_palette_names
+                                .iter()
+                                .position(|n| n.as_deref() == name.as_deref());
+                            top_palette[col_idx] = match intern {
+                                Some(i) => i as u16,
+                                None => {
+                                    top_palette_names.push(name);
+                                    (top_palette_names.len() - 1) as u16
+                                }
+                            };
                         }
 
                         let src_a = (color.rgba[3] as f32) / 255.0;
@@ -172,9 +197,28 @@ pub fn traverse_chunk_y_range(
                 pixels[pixel_offset + 2] = acc_b.round().clamp(0.0, 255.0) as u8;
                 pixels[pixel_offset + 3] = (acc_a * 255.0).round().clamp(0.0, 255.0) as u8;
                 heightmap[col_idx] = recorded_height.unwrap_or(0);
+                let intern = top_palette[col_idx];
+                if (intern as usize) < top_palette_names.len() {
+                    let name = top_palette_names[intern as usize]
+                        .clone()
+                        .unwrap_or_default();
+                    let slot = block_names.iter().position(|n| *n == name);
+                    top_block[col_idx] = match slot {
+                        Some(i) => i as u16,
+                        None => {
+                            block_names.push(name);
+                            (block_names.len() - 1) as u16
+                        }
+                    };
+                }
             }
         }
     }
 
-    ColumnScanResult { pixels, heightmap }
+    ColumnScanResult {
+        pixels,
+        heightmap,
+        top_block,
+        block_names,
+    }
 }

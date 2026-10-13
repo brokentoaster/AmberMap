@@ -21,6 +21,12 @@ use crate::raster::traverser::traverse_chunk_y_range;
 pub struct ChunkRasterResult {
     pub pixels: [u8; 16 * 16 * 4],
     pub heightmap: [i16; 16 * 16],
+    /// Per column, the interned index into `block_names` of the first
+    /// visible block, or `traverser::NO_BLOCK` when the column rendered
+    /// empty.
+    pub top_block: [u16; 16 * 16],
+    /// Chunk-local interned top-block names, indexed by `top_block`.
+    pub block_names: Vec<String>,
 }
 
 pub fn rasterize_chunk(
@@ -45,5 +51,10 @@ pub fn rasterize_chunk_y_range(
         apply_hillshade(&mut pixels, &heightmap);
     }
 
-    ChunkRasterResult { pixels, heightmap }
+    ChunkRasterResult {
+        pixels,
+        heightmap,
+        top_block: scan.top_block,
+        block_names: scan.block_names,
+    }
 }
