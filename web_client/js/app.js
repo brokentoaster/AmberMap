@@ -114,7 +114,7 @@
         if (blockIndexCache.has(key)) {
             return Promise.resolve(blockIndexCache.get(key));
         }
-        return fetch(`/tiles/${key}/${baseTileZ}.blocks.bin`)
+        return fetch(`/tiles/${key}/${baseTileZ}.blocks.bin?t=${cacheBuster}`)
             .then(res => (res.ok ? res.arrayBuffer() : null))
             .then(data => {
                 const parsed = data ? parseBlockIndex(data) : null;
