@@ -111,11 +111,12 @@
     const NO_BLOCK = 65535;
 
     function loadBlockIndex(baseTileX, baseTileZ) {
+        // sidecar layout: <dim>[/<layer>]/<zoom>/<tileX>/<tileZ>.blocks.bin
         const key = `${sidecarSeg()}/${baseTileX}/${baseTileZ}`;
         if (blockIndexCache.has(key)) {
             return Promise.resolve(blockIndexCache.get(key));
         }
-        const url = `/tiles/${key}/${baseTileZ}.blocks.bin?t=${cacheBuster}`;
+        const url = `/tiles/${key}.blocks.bin?t=${cacheBuster}`;
         return fetch(url)
             .then(res => {
                 if (!res.ok) {
