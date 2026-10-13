@@ -45,6 +45,121 @@
         }
     }
 
+    const blockIndexCache = new Map();
+
+    function sidecarSeg() {
+        const layerSeg = currentLayer !== 'surface' ? currentLayer + '/' : '';
+        return `${encodeURIComponent(currentDimension)}/${layerSeg}${maxZoom}`;
+    }
+
+    function clearBlockIndexCache() {
+        blockIndexCache.clear();
+    }
+
+    function parseBlockIndex(data) {
+        if (data.byteLength < 8) {
+            return null;
+        }
+        const view = new DataView(data);
+        let pos = 0;
+        let magic = '';
+        for (let i = 0; i < 4; i++) {
+            magic += String.fromCharCode(view.getUint8(pos + i));
+        }
+        if (magic !== 'AMBI') {
+            return null;
+        }
+        pos += 4;
+        const version = view.getUint16(pos, true);
+        pos += 2;
+        if (version !== 1) {
+            return null;
+        }
+        const nameCount = view.getUint16(pos, true);
+        pos += 2;
+        const bytes = new Uint8Array(data);
+        const names = [];
+        for (let n = 0; n < nameCount; n++) {
+            let end = pos;
+            while (end < bytes.length && bytes[end] !== 0) {
+                end++;
+            }
+            if (end >= bytes.length) {
+                return null;
+            }
+            names.push(new TextDecoder().decode(bytes.subarray(pos, end)));
+            pos = end + 1;
+        }
+        const gridLen = 256 * 256;
+        if (data.byteLength < pos + gridLen * 4) {
+            return null;
+        }
+        const grid = new Uint16Array(gridLen);
+        for (let i = 0; i < gridLen; i++) {
+            grid[i] = view.getUint16(pos, true);
+            pos += 2;
+        }
+        const topY = new Int16Array(gridLen);
+        for (let i = 0; i < gridLen; i++) {
+            topY[i] = view.getInt16(pos, true);
+            pos += 2;
+        }
+        return { names, grid, topY };
+    }
+
+    const NO_BLOCK = 65535;
+
+    function loadBlockIndex(baseTileX, baseTileZ) {
+        const key = `${sidecarSeg()}/${baseTileX}/${baseTileZ}`;
+        if (blockIndexCache.has(key)) {
+            return Promise.resolve(blockIndexCache.get(key));
+        }
+        return fetch(`/tiles/${key}/${baseTileZ}.blocks.bin`)
+            .then(res => (res.ok ? res.arrayBuffer() : null))
+            .then(data => {
+                const parsed = data ? parseBlockIndex(data) : null;
+                blockIndexCache.set(key, parsed);
+                return parsed;
+            })
+            .catch(() => {
+                blockIndexCache.set(key, null);
+                return null;
+            });
+    }
+
+    function updateBlockInfo(realBlockX, realBlockZ) {
+        const el = document.getElementById('hud-block-info');
+        if (!el) {
+            return;
+        }
+        const s = coordScale();
+        const nativeX = Math.round(realBlockX / s);
+        const nativeZ = Math.round(realBlockZ / s);
+        const tileX = Math.floor(nativeX / 256);
+        const tileZ = Math.floor(nativeZ / 256);
+        loadBlockIndex(tileX, tileZ).then(index => {
+            if (!index) {
+                el.textContent = '-';
+                el.title = '';
+                return;
+            }
+            const localX = ((nativeX % 256) + 256) % 256;
+            const localZ = ((nativeZ % 256) + 256) % 256;
+            const col = localZ * 256 + localX;
+            const idx = index.grid[col];
+            if (idx === NO_BLOCK || !index.names[idx]) {
+                el.textContent = '-';
+                el.title = '';
+                return;
+            }
+            const name = index.names[idx].replace(/^minecraft:/, '');
+            const y = index.topY[col];
+            const layerPart = currentLayer !== 'surface' ? ` \u00b7 ${currentLayer}` : '';
+            el.textContent = `${name} (Y ${y})`;
+            el.title = `X ${nativeX} Z ${nativeZ}${layerPart}`;
+        });
+    }
+
     function capturePendingView() {
         if (!map || !userInteracted) {
             pendingView = null;
@@ -327,6 +442,7 @@
                 currentLayer = this.dataset.layer;
                 cacheBuster = Date.now();
                 capturePendingView();
+                clearBlockIndexCache();
                 loadDimension(currentDimension, currentLayer);
             });
             sel.appendChild(btn);
@@ -343,6 +459,7 @@
             currentLayer = 'surface';
             cacheBuster = Date.now();
             capturePendingView();
+            clearBlockIndexCache();
             loadDimension(this.dataset.dim);
         });
     });

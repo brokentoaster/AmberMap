@@ -183,6 +183,10 @@ html, body {
     color: var(--text-primary);
 }
 
+.hud-item.block-info .hud-value {
+    min-width: 140px;
+}
+
 .layer-selector {
     border-left: 1px solid rgba(148, 163, 184, 0.2);
     padding-left: 8px;
