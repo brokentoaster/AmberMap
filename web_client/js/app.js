@@ -118,11 +118,16 @@
             .then(res => (res.ok ? res.arrayBuffer() : null))
             .then(data => {
                 const parsed = data ? parseBlockIndex(data) : null;
-                blockIndexCache.set(key, parsed);
+                if (parsed) {
+                    blockIndexCache.set(key, parsed);
+                } else {
+                    // allow a retry later instead of caching a permanent miss
+                    setTimeout(() => blockIndexCache.delete(key), 10000);
+                }
                 return parsed;
             })
             .catch(() => {
-                blockIndexCache.set(key, null);
+                setTimeout(() => blockIndexCache.delete(key), 10000);
                 return null;
             });
     }
@@ -139,7 +144,7 @@
         const tileZ = Math.floor(nativeZ / 256);
         loadBlockIndex(tileX, tileZ).then(index => {
             if (!index) {
-                el.textContent = '-';
+                el.textContent = 'no block';
                 el.title = '';
                 return;
             }
@@ -148,7 +153,7 @@
             const col = localZ * 256 + localX;
             const idx = index.grid[col];
             if (idx === NO_BLOCK || !index.names[idx]) {
-                el.textContent = '-';
+                el.textContent = 'no block';
                 el.title = '';
                 return;
             }
