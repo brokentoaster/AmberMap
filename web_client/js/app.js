@@ -46,6 +46,7 @@
     }
 
     const blockIndexCache = new Map();
+    let lastBlockIndexError = null;
 
     function sidecarSeg() {
         const layerSeg = currentLayer !== 'surface' ? currentLayer + '/' : '';
@@ -114,10 +115,21 @@
         if (blockIndexCache.has(key)) {
             return Promise.resolve(blockIndexCache.get(key));
         }
-        return fetch(`/tiles/${key}/${baseTileZ}.blocks.bin?t=${cacheBuster}`)
-            .then(res => (res.ok ? res.arrayBuffer() : null))
+        const url = `/tiles/${key}/${baseTileZ}.blocks.bin?t=${cacheBuster}`;
+        return fetch(url)
+            .then(res => {
+                if (!res.ok) {
+                    lastBlockIndexError = `HTTP ${res.status} for ${url}`;
+                    return null;
+                }
+                lastBlockIndexError = null;
+                return res.arrayBuffer();
+            })
             .then(data => {
-                const parsed = data ? parseBlockIndex(data) : null;
+                let parsed = data ? parseBlockIndex(data) : null;
+                if (!parsed && data && !lastBlockIndexError) {
+                    lastBlockIndexError = 'sidecar decode failed';
+                }
                 if (parsed) {
                     blockIndexCache.set(key, parsed);
                 } else {
@@ -126,7 +138,8 @@
                 }
                 return parsed;
             })
-            .catch(() => {
+            .catch(err => {
+                lastBlockIndexError = `fetch failed: ${err}`;
                 setTimeout(() => blockIndexCache.delete(key), 10000);
                 return null;
             });
@@ -145,7 +158,7 @@
         loadBlockIndex(tileX, tileZ).then(index => {
             if (!index) {
                 el.textContent = 'no block';
-                el.title = '';
+                el.title = lastBlockIndexError || 'no sidecar';
                 return;
             }
             const localX = ((nativeX % 256) + 256) % 256;
@@ -154,7 +167,7 @@
             const idx = index.grid[col];
             if (idx === NO_BLOCK || !index.names[idx]) {
                 el.textContent = 'no block';
-                el.title = '';
+                el.title = 'empty column in ' + sidecarSeg() + '/' + tileX + '/' + tileZ;
                 return;
             }
             const name = index.names[idx].replace(/^minecraft:/, '');
