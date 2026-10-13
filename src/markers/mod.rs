@@ -166,6 +166,27 @@ fn sign_lines(tag: &NbtTag) -> Option<Vec<String>> {
     }
 }
 
+/// Resolves a player's dimension. Older saves store `Dimension` as an
+/// Int (0 = overworld, 1 = nether, 2 = the end); saves since custom
+/// dimensions (~1.21.x) store a namespaced String id such as
+/// "minecraft:nether". Both forms are accepted; unknown values fall
+/// back to the overworld.
+fn parse_dimension(tag: &NbtTag) -> Dimension {
+    if let Some(id) = tag.get_string("Dimension") {
+        let local_id = id.rsplit(':').next().unwrap_or(id);
+        return match local_id {
+            "nether" => Dimension::Nether,
+            "the_end" => Dimension::TheEnd,
+            _ => Dimension::Overworld,
+        };
+    }
+    match tag.get_i32("Dimension") {
+        Some(1) => Dimension::Nether,
+        Some(2) => Dimension::TheEnd,
+        _ => Dimension::Overworld,
+    }
+}
+
 fn parse_sign(tag: &NbtTag) -> Option<SignMarker> {
     let id = tag.get_string("id")?;
     let is_sign = id.ends_with("sign") || id.ends_with("hanging_sign");
@@ -192,12 +213,7 @@ fn parse_player(tag: &NbtTag) -> Option<PlayerMarker> {
         },
         _ => return None,
     };
-    let dim_id = tag.get_i32("Dimension").unwrap_or(0);
-    let dimension = match dim_id {
-        1 => Dimension::Nether,
-        2 => Dimension::TheEnd,
-        _ => Dimension::Overworld,
-    };
+    let dimension = parse_dimension(tag);
     Some(PlayerMarker {
         name: "Player".to_string(),
         x: pos.0,

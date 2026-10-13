@@ -83,6 +83,20 @@ fn player_nbt(dim: i32, pos: [f32; 3]) -> Vec<u8> {
     out
 }
 
+fn player_nbt_string_dimension(dim: &str, pos: [f32; 3]) -> Vec<u8> {
+    let mut list = vec![0x05];
+    list.extend_from_slice(&3i32.to_le_bytes());
+    for v in pos {
+        list.extend_from_slice(&v.to_le_bytes());
+    }
+
+    let mut out = nbt_compound_open("");
+    out.extend(nbt_entry(0x08, "Dimension", &nbt_string(dim)));
+    out.extend(nbt_entry(0x09, "Pos", &list));
+    out.push(0x00);
+    out
+}
+
 #[test]
 fn parses_modern_sign_with_front_text() {
     let payload = sign_nbt("minecraft:sign", 10, 64, -20, "Hello\nWorld\n\n");
@@ -138,6 +152,32 @@ fn parses_player_position_and_dimension() {
     assert!((player.x - 12.5).abs() < 1e-4);
     assert!((player.z - 44.25).abs() < 1e-4);
     assert!(!player.name.is_empty());
+}
+
+#[test]
+fn parses_string_dimension_ids_from_modern_saves() {
+    let nether = player_nbt_string_dimension("minecraft:nether", [10.0f32, 64.0f32, 20.0f32]);
+    let tag = parse(&nether).unwrap();
+    let player = ambermap::markers::PlayerMarker::from_nbt(&tag).expect("player parsed");
+    assert_eq!(player.dimension, Dimension::Nether);
+
+    let overworld = player_nbt_string_dimension("minecraft:overworld", [0.0f32, 0.0f32, 0.0f32]);
+    let tag = parse(&overworld).unwrap();
+    let player = ambermap::markers::PlayerMarker::from_nbt(&tag).expect("player parsed");
+    assert_eq!(player.dimension, Dimension::Overworld);
+
+    let the_end = player_nbt_string_dimension("minecraft:the_end", [0.0f32, 0.0f32, 0.0f32]);
+    let tag = parse(&the_end).unwrap();
+    let player = ambermap::markers::PlayerMarker::from_nbt(&tag).expect("player parsed");
+    assert_eq!(player.dimension, Dimension::TheEnd);
+}
+
+#[test]
+fn falls_back_to_overworld_for_unknown_dimension_ids() {
+    let payload = player_nbt_string_dimension("custom:foo", [0.0f32, 0.0f32, 0.0f32]);
+    let tag = parse(&payload).unwrap();
+    let player = ambermap::markers::PlayerMarker::from_nbt(&tag).expect("player parsed");
+    assert_eq!(player.dimension, Dimension::Overworld);
 }
 
 #[test]
