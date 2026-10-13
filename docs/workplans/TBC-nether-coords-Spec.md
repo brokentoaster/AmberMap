@@ -67,10 +67,9 @@ Dimension and layer switching call `loadDimension`, which rebuilds the map
   worlds work without a re-render.
 - Both coordinate sets are displayed where height is shown (player tooltips
   in the Nether); the mouse-tracking HUD shows both X/Z pairs.
-- Player markers appear on every dimension's map at their
-  overworld-equivalent position: each player record is a snapshot in its
-  own dimension's native coordinates, so a player near a portal shows at
-  the linked spot on both maps. Sign markers stay per-dimension.
+- Each player record is a snapshot in its own dimension's native
+  coordinates and is shown only on the map of the dimension the player was
+  in at render time.
 
 ## Acceptance Criteria
 
