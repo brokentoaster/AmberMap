@@ -87,6 +87,7 @@ fn test_mime_type_resolution() {
     assert_eq!(resolve_mime("0.png"), "image/png");
     assert_eq!(resolve_mime("data.json"), "application/json");
     assert_eq!(resolve_mime("icon.svg"), "image/svg+xml");
+    assert_eq!(resolve_mime("7.blocks.bin"), "application/octet-stream");
     assert_eq!(resolve_mime("unknown.bin"), "application/octet-stream");
 }
 
