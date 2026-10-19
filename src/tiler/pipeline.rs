@@ -242,13 +242,11 @@ pub fn render_world_map_with_db(db: &WorldDb, options: RenderOptions) -> Result<
     }
 
     let markers = collect_markers(db, options.dimension);
-    if !markers.is_empty() {
-        let markers_path = match &options.layer {
-            Some(layer) => dim_dir.join(&layer.id).join("markers.json"),
-            None => dim_dir.join("markers.json"),
-        };
-        let _ = std::fs::write(markers_path, markers.to_json());
-    }
+    let markers_path = match &options.layer {
+        Some(layer) => dim_dir.join(&layer.id).join("markers.json"),
+        None => dim_dir.join("markers.json"),
+    };
+    let _ = std::fs::write(markers_path, markers.to_json());
 
     if max_zoom > 0 {
         for current_z in (1..=max_zoom).rev() {

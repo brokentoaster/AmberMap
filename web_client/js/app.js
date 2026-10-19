@@ -14,6 +14,7 @@
     let markersLayer = null;
     let markersData = { signs: [], players: [] };
     let showPlayerMarkers = localStorage.getItem('showPlayerMarkers') !== 'false';
+    let showSignMarkers = localStorage.getItem('showSignMarkers') !== 'false';
     let pendingView = null;
     let userInteracted = false;
 
@@ -221,6 +222,9 @@
         const s = coordScale();
 
         markersData.signs.forEach(sign => {
+            if (!showSignMarkers) {
+                return;
+            }
             const text = (sign.lines || [])
                 .filter(Boolean)
                 .join('\n') || 'Sign';
@@ -432,6 +436,17 @@
             playersBtn.classList.toggle('active', showPlayerMarkers);
             renderMarkers();
         });
+
+        const signsBtn = document.getElementById('btn-toggle-signs');
+        if (signsBtn) {
+            signsBtn.classList.toggle('active', showSignMarkers);
+            signsBtn.addEventListener('click', function () {
+                showSignMarkers = !showSignMarkers;
+                localStorage.setItem('showSignMarkers', String(showSignMarkers));
+                signsBtn.classList.toggle('active', showSignMarkers);
+                renderMarkers();
+            });
+        }
 
         document.querySelectorAll('.dim-btn').forEach(btn => {
             btn.classList.toggle('active', btn.dataset.dim === currentDimension);

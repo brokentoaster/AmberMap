@@ -13,6 +13,7 @@
  * Licensed under Apache-2.0 or MIT
  */
 
+use crate::leveldb::decompressor::decompress_payload;
 use crate::leveldb::keys::Dimension;
 use crate::leveldb::reader::WorldDb;
 use crate::nbt::reader::NbtReader;
@@ -60,7 +61,11 @@ impl Markers {
                 s.x,
                 s.y,
                 s.z,
-                lines.join(",")
+                lines
+                    .iter()
+                    .map(|l| format!("\"{}\"", l))
+                    .collect::<Vec<String>>()
+                    .join(",")
             );
         }
         out.push_str("],\"players\":[");
@@ -189,7 +194,10 @@ fn parse_dimension(tag: &NbtTag) -> Dimension {
 
 fn parse_sign(tag: &NbtTag) -> Option<SignMarker> {
     let id = tag.get_string("id")?;
-    let is_sign = id.ends_with("sign") || id.ends_with("hanging_sign");
+    let is_sign = id.ends_with("sign")
+        || id.ends_with("Sign")
+        || id.ends_with("HangingSign")
+        || id.ends_with("hanging_sign");
     if !is_sign {
         return None;
     }
@@ -232,6 +240,7 @@ pub fn collect_markers(db: &WorldDb, dimension: Dimension) -> Markers {
     let mut markers = Markers::default();
 
     for payload in db.block_entity_payloads(dimension) {
+        let payload = decompress_payload(&payload).unwrap_or(payload);
         let parsed = parse_nbt_root(&payload).and_then(|tag| parse_sign(&tag));
         if let Some(sign) = parsed {
             markers.signs.push(sign);

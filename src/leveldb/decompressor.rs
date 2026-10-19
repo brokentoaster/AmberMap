@@ -14,7 +14,7 @@
  */
 
 use crate::core::error::{AmberError, Result};
-use std::io::Read;
+use std::io::{Cursor, Read};
 
 const ZSTD_MAGIC: [u8; 4] = [0x28, 0xb5, 0x2f, 0xfd];
 
@@ -37,6 +37,23 @@ pub fn decompress_payload(raw: &[u8]) -> Result<Vec<u8>> {
     if let Ok(decompressed) = snap_decoder.decompress_vec(raw) {
         if !decompressed.is_empty() {
             return Ok(decompressed);
+        }
+    }
+
+    // Block-entity records (signs, chests, ...) are zlib-compressed in
+    // Bedrock worlds; raw-deflate appears in some LevelDB table encodings.
+    for make_decoder in [
+        |r: &[u8]| {
+            Box::new(flate2::read::ZlibDecoder::new(Cursor::new(r.to_vec()))) as Box<dyn Read>
+        },
+        |r: &[u8]| {
+            Box::new(flate2::read::DeflateDecoder::new(Cursor::new(r.to_vec()))) as Box<dyn Read>
+        },
+    ] {
+        let mut decoder = make_decoder(raw);
+        let mut out = Vec::new();
+        if decoder.read_to_end(&mut out).is_ok() && !out.is_empty() {
+            return Ok(out);
         }
     }
 
