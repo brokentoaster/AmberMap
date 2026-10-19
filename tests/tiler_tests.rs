@@ -67,7 +67,7 @@ fn test_tile_compositor_stitching() {
     tile.blit_chunk(16, 32, &chunk_pixels);
     assert!(!tile.is_empty());
 
-    let top_left_idx = (0 * TILE_SIZE + 0) * 4;
+    let top_left_idx = 0 * TILE_SIZE * 4;
     assert_eq!(&tile.pixels[top_left_idx..top_left_idx + 4], &[0, 0, 0, 0]);
 
     let blit_start_idx = (32 * TILE_SIZE + 16) * 4;
@@ -100,13 +100,13 @@ fn test_pyramid_downsampling_alpha_weighted() {
 
     let parent = downsample_quadrants(&children);
 
-    let p_tl = (0 * TILE_SIZE + 0) * 4;
+    let p_tl = 0 * TILE_SIZE * 4;
     assert_eq!(&parent.pixels[p_tl..p_tl + 4], &[200, 100, 50, 255]);
 
-    let p_tr = (0 * TILE_SIZE + 128) * 4;
+    let p_tr = 128 * 4;
     assert_eq!(&parent.pixels[p_tr..p_tr + 4], &[0, 200, 100, 255]);
 
-    let p_bl = (128 * TILE_SIZE + 0) * 4;
+    let p_bl = 128 * TILE_SIZE * 4;
     assert_eq!(&parent.pixels[p_bl..p_bl + 4], &[100, 50, 200, 255]);
 
     let p_br = (128 * TILE_SIZE + 128) * 4;

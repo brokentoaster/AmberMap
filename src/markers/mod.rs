@@ -128,6 +128,29 @@ fn parse_nbt_root(payload: &[u8]) -> Option<NbtTag> {
     reader.read_root_compound().ok().map(|(_, tag)| tag)
 }
 
+/// Parses every concatenated root NBT compound in a payload. Bedrock
+/// block-entity records concatenate multiple compounds (e.g. chest + sign),
+/// so a single `parse_nbt_root` call would silently drop all but the first.
+fn parse_nbt_roots(payload: &[u8]) -> Vec<NbtTag> {
+    let mut tags = Vec::new();
+    let mut offset = 0usize;
+    while offset < payload.len() {
+        let mut reader = NbtReader::new(&payload[offset..]);
+        match reader.read_root_compound() {
+            Ok((_, tag)) => {
+                let end = reader.offset();
+                if end == 0 {
+                    break;
+                }
+                tags.push(tag);
+                offset += end;
+            }
+            Err(_) => break,
+        }
+    }
+    tags
+}
+
 fn nbt_pos(tag: &NbtTag) -> Option<(i32, i32, i32)> {
     Some((tag.get_i32("x")?, tag.get_i32("y")?, tag.get_i32("z")?))
 }
@@ -231,9 +254,9 @@ fn parse_player(tag: &NbtTag) -> Option<PlayerMarker> {
     })
 }
 
-/// Parses a raw block-entity payload into a sign marker if it is a sign.
+/// Parses a raw block-entity payload into sign markers for every sign found.
 pub fn parse_sign_payload(payload: &[u8]) -> Option<SignMarker> {
-    parse_nbt_root(payload).and_then(|tag| parse_sign(&tag))
+    parse_nbt_roots(payload).iter().find_map(parse_sign)
 }
 
 pub fn collect_markers(db: &WorldDb, dimension: Dimension) -> Markers {
@@ -241,9 +264,10 @@ pub fn collect_markers(db: &WorldDb, dimension: Dimension) -> Markers {
 
     for payload in db.block_entity_payloads(dimension) {
         let payload = decompress_payload(&payload).unwrap_or(payload);
-        let parsed = parse_nbt_root(&payload).and_then(|tag| parse_sign(&tag));
-        if let Some(sign) = parsed {
-            markers.signs.push(sign);
+        for tag in parse_nbt_roots(&payload) {
+            if let Some(sign) = parse_sign(&tag) {
+                markers.signs.push(sign);
+            }
         }
     }
 

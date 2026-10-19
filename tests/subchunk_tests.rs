@@ -33,9 +33,8 @@ fn build_synthetic_subchunk_v8(
     let header = ((bits_per_block as u8) << 1) & 0xfe;
     buf.push(header);
 
-    if bits_per_block > 0 {
-        let blocks_per_word = 32 / bits_per_block;
-        let words_count = (4096 + blocks_per_word - 1) / blocks_per_word;
+    if let Some(blocks_per_word) = 32.checked_div(bits_per_block) {
+        let words_count = 4096_usize.div_ceil(blocks_per_word);
 
         let mut block_idx = 0;
         for _ in 0..words_count {
@@ -121,8 +120,8 @@ fn test_subchunk_v8_1_bit_checkerboard() {
 #[test]
 fn test_subchunk_v8_4_bits_multi_blocks() {
     let mut indices = [0u16; 4096];
-    for i in 0..4096 {
-        indices[i] = (i % 16) as u16;
+    for (i, index) in indices.iter_mut().enumerate() {
+        *index = (i % 16) as u16;
     }
 
     let mut names = Vec::new();

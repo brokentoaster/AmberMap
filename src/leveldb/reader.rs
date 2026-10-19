@@ -104,6 +104,11 @@ impl WorldDb {
         list
     }
 
+    /// Read-only access to the raw key/value entries, for tooling and tests.
+    pub fn raw_entries(&self) -> &HashMap<Vec<u8>, Vec<u8>> {
+        &self.entries
+    }
+
     /// Raw (still compressed) payloads of all block-entity records for a
     /// dimension, paired with their chunk position.
     pub fn block_entity_payloads(&self, dimension: Dimension) -> Vec<Vec<u8>> {
