@@ -1,5 +1,5 @@
-use ambermap::leveldb::sstable::read_sstable;
 use ambermap::leveldb::decompress_payload;
+use ambermap::leveldb::sstable::read_sstable;
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
@@ -17,10 +17,7 @@ fn main() {
     let mut entries: HashMap<Vec<u8>, Vec<u8>> = HashMap::new();
     for entry in fs::read_dir(&db_dir).unwrap().flatten() {
         let path = entry.path();
-        if path
-            .extension()
-            .is_some_and(|e| e == "ldb" || e == "sst")
-        {
+        if path.extension().is_some_and(|e| e == "ldb" || e == "sst") {
             let _ = read_sstable(&path, &mut entries);
         }
     }

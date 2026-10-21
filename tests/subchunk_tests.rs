@@ -33,8 +33,8 @@ fn build_synthetic_subchunk_v8(
     let header = ((bits_per_block as u8) << 1) & 0xfe;
     buf.push(header);
 
-    if let Some(blocks_per_word) = 32.checked_div(bits_per_block) {
-        let words_count = 4096_usize.div_ceil(blocks_per_word);
+    if let Some(blocks_per_word) = 32usize.checked_div(bits_per_block) {
+        let words_count = 4096usize.div_ceil(blocks_per_word);
 
         let mut block_idx = 0;
         for _ in 0..words_count {
@@ -163,12 +163,7 @@ fn test_subchunk_v8_4_bits_multi_blocks() {
 
 #[test]
 fn test_subchunk_v9_two_layers_with_sub_y() {
-    let mut buf = Vec::new();
-    buf.push(9);
-    buf.push(2);
-    buf.push((-3i8) as u8);
-
-    buf.push(0);
+    let mut buf = vec![9u8, 2, (-3i8) as u8, 0];
     let mut pal_size_buf = [0u8; 4];
     LittleEndian::write_i32(&mut pal_size_buf, 1);
     buf.extend_from_slice(&pal_size_buf);
