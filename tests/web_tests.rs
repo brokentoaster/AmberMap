@@ -14,6 +14,71 @@
  */
 
 use ambermap::web::{get_embedded_asset, resolve_mime, status_metadata};
+use std::collections::HashMap;
+
+#[test]
+fn test_apply_rename_save_and_clear() {
+    use ambermap::web::apply_rename_for_test;
+
+    let base = std::env::temp_dir().join(format!("ambermap_rename_test_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&base);
+    std::fs::create_dir_all(&base).unwrap();
+
+    // valid save
+    let req = ambermap::web::RenameRequest {
+        key: "player_2535410123456789".to_string(),
+        name: "Steve".to_string(),
+    };
+    apply_rename_for_test(&base, &req).unwrap();
+    let overrides: HashMap<String, String> =
+        serde_json::from_str(&std::fs::read_to_string(base.join("player_names.json")).unwrap())
+            .unwrap();
+    assert_eq!(overrides.get("player_2535410123456789").unwrap(), "Steve");
+
+    // empty name clears
+    let clear = ambermap::web::RenameRequest {
+        key: "player_2535410123456789".to_string(),
+        name: String::new(),
+    };
+    apply_rename_for_test(&base, &clear).unwrap();
+    let after: HashMap<String, String> =
+        serde_json::from_str(&std::fs::read_to_string(base.join("player_names.json")).unwrap())
+            .unwrap();
+    assert!(!after.contains_key("player_2535410123456789"));
+}
+
+#[test]
+fn test_apply_rename_rejects_bad_requests() {
+    use ambermap::web::apply_rename_for_test;
+
+    let base =
+        std::env::temp_dir().join(format!("ambermap_rename_bad_test_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&base);
+    std::fs::create_dir_all(&base).unwrap();
+
+    // unknown key shape
+    let bad_key = ambermap::web::RenameRequest {
+        key: "sign_123".to_string(),
+        name: "X".to_string(),
+    };
+    assert!(apply_rename_for_test(&base, &bad_key).is_err());
+
+    // empty key
+    let empty_key = ambermap::web::RenameRequest {
+        key: String::new(),
+        name: "X".to_string(),
+    };
+    assert!(apply_rename_for_test(&base, &empty_key).is_err());
+
+    // oversized name
+    let long_name = ambermap::web::RenameRequest {
+        key: "player_123".to_string(),
+        name: "x".repeat(65),
+    };
+    assert!(apply_rename_for_test(&base, &long_name).is_err());
+
+    assert!(!base.join("player_names.json").exists());
+}
 
 #[test]
 fn test_status_metadata_per_dimension() {

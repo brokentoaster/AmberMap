@@ -34,6 +34,9 @@ pub struct SignMarker {
 #[derive(Clone, Debug)]
 pub struct PlayerMarker {
     pub name: String,
+    /// Record key label used for renames: the XUID for `player_<XUID>`
+    /// records, or `local_player`.
+    pub key: String,
     pub x: f64,
     pub y: f64,
     pub z: f64,
@@ -83,8 +86,9 @@ impl Markers {
             };
             let _ = write!(
                 out,
-                "{{\"name\":\"{}\",\"x\":{:.2},\"y\":{:.2},\"z\":{:.2},\"dimension\":\"{}\"}}",
+                "{{\"name\":\"{}\",\"key\":\"{}\",\"x\":{:.2},\"y\":{:.2},\"z\":{:.2},\"dimension\":\"{}\"}}",
                 json_escape(&p.name),
+                json_escape(&p.key),
                 p.x,
                 p.y,
                 p.z,
@@ -264,17 +268,59 @@ pub fn load_player_names(world_path: &Path) -> HashMap<String, String> {
     HashMap::new()
 }
 
-/// Resolves the display name for a player record key. `player_<XUID>` keys
-/// join against the allowlist map; unmapped players fall back to the XUID
-/// (or "local_player") so every marker stays identifiable.
-pub fn player_name_for_key(key: &str, player_names: &HashMap<String, String>) -> String {
-    match key.strip_prefix("player_") {
-        Some(xuid) => player_names
-            .get(xuid)
-            .cloned()
-            .unwrap_or_else(|| xuid.to_string()),
-        None => "local_player".to_string(),
+/// Loads UI-assigned display names from `player_names.json` in the output
+/// directory, keyed by player key label (XUID or `local_player`). An empty
+/// string value means "clear this override". A missing or malformed file
+/// yields an empty map so rendering never fails because of it.
+pub fn load_player_overrides(output_dir: &Path) -> HashMap<String, String> {
+    let path = output_dir.join("player_names.json");
+    match std::fs::read_to_string(&path) {
+        Ok(text) => serde_json::from_str::<HashMap<String, String>>(&text).unwrap_or_default(),
+        Err(_) => HashMap::new(),
     }
+}
+
+/// Combines allowlist names with UI overrides into one lookup map, with
+/// overrides winning. Empty override values are skipped so clearing an
+/// override falls through to the allowlist/XUID.
+pub fn merge_player_names(
+    allowlist: &HashMap<String, String>,
+    overrides: &HashMap<String, String>,
+) -> HashMap<String, String> {
+    let mut merged = allowlist.clone();
+    for (key, name) in overrides {
+        if !name.is_empty() {
+            merged.insert(key.clone(), name.clone());
+        }
+    }
+    merged
+}
+
+/// Normalizes a player record key into the label used by renames and the
+/// name lookup: the XUID for `player_<XUID>` records, the full
+/// `server_<UUID>` label for server player records, else `local_player`.
+pub fn key_label_for_key(key: &str) -> String {
+    if let Some(xuid) = key.strip_prefix("player_") {
+        return xuid.to_string();
+    }
+    if key.starts_with("server_") {
+        return key.to_string();
+    }
+    "local_player".to_string()
+}
+
+/// Resolves the display name for a player record key label. XUID labels
+/// join against the merged name map (allowlist + overrides); unmapped
+/// players fall back to the XUID (or "local_player") so every marker stays
+/// identifiable.
+pub fn player_name_for_key(key_label: &str, player_names: &HashMap<String, String>) -> String {
+    if let Some(name) = player_names.get(key_label) {
+        return name.clone();
+    }
+    key_label
+        .strip_prefix("server_")
+        .unwrap_or(key_label)
+        .to_string()
 }
 
 fn parse_player(tag: &NbtTag) -> Option<PlayerMarker> {
@@ -295,6 +341,7 @@ fn parse_player(tag: &NbtTag) -> Option<PlayerMarker> {
     let dimension = parse_dimension(tag);
     Some(PlayerMarker {
         name: "Player".to_string(),
+        key: String::new(),
         x: pos.0,
         y: pos.1,
         z: pos.2,
@@ -327,7 +374,8 @@ pub fn collect_markers(
         let payload = decompress_payload(&payload).unwrap_or(payload);
         let parsed = parse_nbt_root(&payload).and_then(|tag| parse_player(&tag));
         if let Some(mut player) = parsed {
-            player.name = player_name_for_key(&key, player_names);
+            player.key = key_label_for_key(&key);
+            player.name = player_name_for_key(&player.key, player_names);
             markers.players.push(player);
         }
     }

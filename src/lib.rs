@@ -25,7 +25,8 @@ pub mod web;
 pub use core::{block_subchunk_index, AmberError, BlockPos, ChunkPos, Result};
 pub use leveldb::{decompress_payload, ChunkData, DbKey, Dimension, KeyTag, WorldDb};
 pub use markers::{
-    collect_markers, load_player_names, parse_sign_payload, Markers, PlayerMarker, SignMarker,
+    collect_markers, load_player_names, load_player_overrides, merge_player_names,
+    parse_sign_payload, Markers, PlayerMarker, SignMarker,
 };
 pub use raster::{
     apply_hillshade, compute_light_factor, rasterize_chunk, BlockColor, ChunkRasterResult,

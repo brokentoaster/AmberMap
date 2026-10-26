@@ -15,10 +15,11 @@
 
 use crate::core::error::{AmberError, Result};
 use crate::web::embedded::{get_embedded_asset, resolve_mime};
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use tiny_http::{Header, Response, Server, StatusCode};
+use tiny_http::{Header, Method, Response, Server, StatusCode};
 
 pub struct ServerConfig {
     pub bind_addr: String,
@@ -27,6 +28,99 @@ pub struct ServerConfig {
     pub auto_open: bool,
     pub tile_format: String,
     pub max_zoom: u8,
+}
+
+/// Merges UI-assigned names into a served markers.json payload so renames
+/// show up on reload without a re-render. Malformed JSON passes through
+/// unchanged.
+fn merge_markers_with_overrides(markers_json: &str, tiles_dir: &Path) -> String {
+    let overrides = read_player_overrides(tiles_dir);
+    if overrides.is_empty() {
+        return markers_json.to_string();
+    }
+    let mut value: serde_json::Value = match serde_json::from_str(markers_json) {
+        Ok(v) => v,
+        Err(_) => return markers_json.to_string(),
+    };
+    if let Some(players) = value.get_mut("players").and_then(|p| p.as_array_mut()) {
+        for player in players.iter_mut() {
+            let key = match player.get("key").and_then(|k| k.as_str()) {
+                Some(k) => k.to_string(),
+                None => continue,
+            };
+            if let Some(name) = overrides.get(&key) {
+                let display = if name.is_empty() {
+                    key.strip_prefix("server_").unwrap_or(&key).to_string()
+                } else {
+                    name.clone()
+                };
+                player["name"] = serde_json::Value::String(display);
+            }
+        }
+    }
+    serde_json::to_string(&value).unwrap_or_else(|_| markers_json.to_string())
+}
+
+#[derive(serde::Deserialize)]
+pub struct RenameRequest {
+    pub key: String,
+    pub name: String,
+}
+
+/// Reads the player-name overrides file used by the rename endpoint.
+fn read_player_overrides(tiles_dir: &Path) -> HashMap<String, String> {
+    std::fs::read_to_string(tiles_dir.join("player_names.json"))
+        .ok()
+        .and_then(|text| serde_json::from_str(&text).ok())
+        .unwrap_or_default()
+}
+
+/// Applies a rename (or clear, when `name` is empty) to the overrides file.
+/// Unknown key shapes are rejected so only player records can be renamed.
+fn apply_rename(tiles_dir: &Path, req: &RenameRequest) -> std::result::Result<(), &'static str> {
+    if req.key.is_empty() || req.name.len() > 64 {
+        return Err("invalid request");
+    }
+    if !(req.key.starts_with("player_")
+        || req.key.starts_with("server_")
+        || req.key == "local_player")
+    {
+        return Err("unknown player key");
+    }
+
+    let mut overrides = read_player_overrides(tiles_dir);
+    if req.name.is_empty() {
+        overrides.remove(&req.key);
+    } else {
+        overrides.insert(req.key.clone(), req.name.clone());
+    }
+    let json = serde_json::to_string_pretty(&overrides).map_err(|_| "serialization failed")?;
+    std::fs::write(tiles_dir.join("player_names.json"), json)
+        .map_err(|_| "failed to write player_names.json")?;
+    Ok(())
+}
+
+fn json_response(status: StatusCode, body: String) -> Response<std::io::Cursor<Vec<u8>>> {
+    Response::from_string(body)
+        .with_status_code(status)
+        .with_header(Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..]).unwrap())
+        .with_header(Header::from_bytes(&b"Access-Control-Allow-Origin"[..], &b"*"[..]).unwrap())
+}
+
+/// Test-only wrapper: `apply_rename` is private but the request loop uses
+/// it inline; tests exercise the same logic through this re-export.
+#[doc(hidden)]
+pub fn apply_rename_for_test(
+    tiles_dir: &Path,
+    req: &RenameRequest,
+) -> std::result::Result<(), &'static str> {
+    apply_rename(tiles_dir, req)
+}
+
+/// Test-only wrapper for the serve-time markers/overrides merge.
+#[doc(hidden)]
+pub fn merge_markers_with_overrides_for_test(markers_json: &str, tiles_dir: &Path) -> String {
+    merge_markers_with_overrides(markers_json, tiles_dir)
 }
 
 pub fn status_metadata(tiles_dir: &Path, dim: &str, layer: &str) -> String {
@@ -172,6 +266,35 @@ pub fn start_server(config: ServerConfig) -> Result<()> {
         let raw_url = request.url().to_string();
         let path = raw_url.split('?').next().unwrap_or("/");
 
+        if path == "/api/players/rename" {
+            if request.method() != &Method::Post {
+                let _ = request.respond(json_response(
+                    StatusCode(405),
+                    r#"{"error":"method not allowed"}"#.to_string(),
+                ));
+                continue;
+            }
+            let mut body = String::new();
+            let mut request = request;
+            let read_ok = request.as_reader().read_to_string(&mut body).is_ok();
+            let outcome = if !read_ok {
+                Err("malformed body")
+            } else {
+                serde_json::from_str::<RenameRequest>(&body)
+                    .map_err(|_| "malformed body")
+                    .and_then(|req| apply_rename(&config.tiles_dir, &req))
+            };
+            let response = match outcome {
+                Ok(()) => json_response(StatusCode(200), r#"{"ok":true}"#.to_string()),
+                Err(reason) => {
+                    eprintln!("[warn] rename rejected: {}", reason);
+                    json_response(StatusCode(400), format!(r#"{{"error":"{}"}}"#, reason))
+                }
+            };
+            let _ = request.respond(response);
+            continue;
+        }
+
         if path == "/api/status" {
             let query = raw_url.split('?').nth(1).unwrap_or("");
             let param = |name: &str| {
@@ -201,6 +324,12 @@ pub fn start_server(config: ServerConfig) -> Result<()> {
                 if let Ok(mut file) = File::open(&file_path) {
                     let mut data = Vec::new();
                     if file.read_to_end(&mut data).is_ok() {
+                        if tile_subpath.ends_with("markers.json") {
+                            if let Ok(text) = String::from_utf8(data.clone()) {
+                                let merged = merge_markers_with_overrides(&text, &config.tiles_dir);
+                                data = merged.into_bytes();
+                            }
+                        }
                         let mime = resolve_mime(tile_subpath);
                         let response = Response::from_data(data)
                             .with_header(

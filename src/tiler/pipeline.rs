@@ -17,7 +17,9 @@ use crate::core::coordinates::ChunkPos;
 use crate::core::error::{AmberError, Result};
 use crate::leveldb::keys::Dimension;
 use crate::leveldb::reader::WorldDb;
-use crate::markers::{collect_markers, load_player_names};
+use crate::markers::{
+    collect_markers, load_player_names, load_player_overrides, merge_player_names,
+};
 use crate::raster::chunk_raster::rasterize_chunk_y_range;
 use crate::raster::colormap::ColorMap;
 use crate::tiler::block_index::BlockIndex;
@@ -78,6 +80,10 @@ pub fn render_world_map(options: RenderOptions) -> Result<RenderStats> {
 
 pub fn render_world_map_with_db(db: &WorldDb, options: RenderOptions) -> Result<RenderStats> {
     let start_time = Instant::now();
+
+    // UI-assigned names live in the output dir, which gets wiped below, so
+    // load them first and rewrite the file after markers are written.
+    let overrides = load_player_overrides(&options.output_dir);
 
     if options.threads > 0 {
         let _ = rayon::ThreadPoolBuilder::new()
@@ -241,13 +247,19 @@ pub fn render_world_map_with_db(db: &WorldDb, options: RenderOptions) -> Result<
         let _ = std::fs::write(options.output_dir.join("metadata.json"), &meta_json);
     }
 
-    let player_names = load_player_names(&options.world_path);
+    let allowlist_names = load_player_names(&options.world_path);
+    let player_names = merge_player_names(&allowlist_names, &overrides);
     let markers = collect_markers(db, options.dimension, &player_names);
     let markers_path = match &options.layer {
         Some(layer) => dim_dir.join(&layer.id).join("markers.json"),
         None => dim_dir.join("markers.json"),
     };
     let _ = std::fs::write(markers_path, markers.to_json());
+    if !overrides.is_empty() {
+        if let Ok(json) = serde_json::to_string_pretty(&overrides) {
+            let _ = std::fs::write(options.output_dir.join("player_names.json"), json);
+        }
+    }
 
     if max_zoom > 0 {
         for current_z in (1..=max_zoom).rev() {

@@ -213,6 +213,37 @@ html, body {
     cursor: pointer;
 }
 
+.player-rename-popup {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 180px;
+    font: 13px/1.4 system-ui, sans-serif;
+    color: #0f172a;
+}
+
+.player-rename-popup input {
+    padding: 4px 6px;
+    border: 1px solid #cbd5e1;
+    border-radius: 4px;
+}
+
+.player-rename-popup button {
+    padding: 4px 10px;
+    border: none;
+    border-radius: 4px;
+    background: var(--accent-amber, #f59e0b);
+    color: #0f172a;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.player-rename-status {
+    min-height: 1em;
+    font-size: 12px;
+    color: #475569;
+}
+
 .action-btn.active {
     background: var(--accent-amber);
     color: #0f172a;

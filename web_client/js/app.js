@@ -248,20 +248,85 @@
             if (player.dimension && player.dimension !== currentDimension) {
                 return;
             }
-            const tooltip = `${player.name || 'Player'}<br>` +
-                `X ${Math.round(player.x)} Y ${Math.round(player.y)} Z ${Math.round(player.z)}`;
-            L.circleMarker([player.z, player.x], {
+            const marker = L.circleMarker([player.z, player.x], {
                 radius: 6,
                 color: '#38bdf8',
                 weight: 2,
                 fillColor: '#0ea5e9',
                 fillOpacity: 0.7,
-            })
-                .bindTooltip(tooltip, {
-                    direction: 'top',
-                })
-                .addTo(markersLayer);
+            });
+            marker.bindTooltip(playerTooltip(player), {
+                direction: 'top',
+            });
+            marker.on('click', function () {
+                marker.openPopup();
+            });
+            marker.bindPopup(playerRenamePopup(player, marker));
+            marker.addTo(markersLayer);
         });
+    }
+
+    function escHtml(s) {
+        return String(s == null ? '' : s)
+            .replace(/&/g, '&')
+            .replace(/</g, '<')
+            .replace(/>/g, '>')
+            .replace(/"/g, '"')
+            .replace(/'/g, '&#39;');
+    }
+
+    function playerTooltip(player) {
+        const name = escHtml(player.name || 'Player');
+        return name + '<br>' +
+            'X ' + Math.round(player.x) + ' Y ' + Math.round(player.y) +
+            ' Z ' + Math.round(player.z);
+    }
+
+    function playerRenamePopup(player, marker) {
+        const wrap = document.createElement('div');
+        wrap.className = 'player-rename-popup';
+        const label = document.createElement('div');
+        label.textContent = player.name || 'Player';
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.value = player.name && player.name !== player.xuid ? player.name : '';
+        input.placeholder = player.xuid || 'Player';
+        input.maxLength = 64;
+        const save = document.createElement('button');
+        save.type = 'button';
+        save.textContent = 'Save';
+        const status = document.createElement('div');
+        status.className = 'player-rename-status';
+
+        save.addEventListener('click', function () {
+            const name = input.value.trim();
+            status.textContent = 'Saving...';
+            fetch('/api/players/rename', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ key: player.key || '', name: name }),
+            })
+                .then(res => res.json().then(data => ({ ok: res.ok, data })))
+                .then(({ ok, data }) => {
+                    if (!ok || !data.ok) {
+                        status.textContent = 'Rename failed';
+                        return;
+                    }
+                    player.name = name || player.xuid || 'Player';
+                    marker.setTooltipContent(playerTooltip(player));
+                    status.textContent = 'Saved';
+                    setTimeout(() => marker.closePopup(), 600);
+                })
+                .catch(() => {
+                    status.textContent = 'Rename failed';
+                });
+        });
+
+        wrap.appendChild(label);
+        wrap.appendChild(input);
+        wrap.appendChild(save);
+        wrap.appendChild(status);
+        return wrap;
     }
 
     function loadDimension(dim, layer) {

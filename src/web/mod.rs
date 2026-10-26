@@ -17,4 +17,7 @@ pub mod embedded;
 pub mod server;
 
 pub use embedded::{get_embedded_asset, resolve_mime, WebAssets};
-pub use server::{start_server, status_metadata, ServerConfig};
+pub use server::{
+    apply_rename_for_test, merge_markers_with_overrides_for_test, start_server, status_metadata,
+    RenameRequest, ServerConfig,
+};

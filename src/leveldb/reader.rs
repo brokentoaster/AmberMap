@@ -124,13 +124,18 @@ impl WorldDb {
             .collect()
     }
 
-    /// Raw payloads of all player records (`~local_player` and `player_*`),
-    /// paired with their key string. For `player_<XUID>` records the XUID
-    /// suffix is the join key against `allowlist.json` entries.
+    /// Raw payloads of all player records (`~local_player`, `player_*`,
+    /// and `server_*`), paired with their key string. For `player_<XUID>`
+    /// records the XUID suffix is the join key against `allowlist.json`
+    /// entries; `server_<UUID>` records are per-player server saves.
     pub fn player_payloads(&self) -> Vec<(String, Vec<u8>)> {
         self.entries
             .iter()
-            .filter(|(k, _)| k.starts_with(b"~local_player") || k.starts_with(b"player"))
+            .filter(|(k, _)| {
+                k.starts_with(b"~local_player")
+                    || k.starts_with(b"player")
+                    || k.starts_with(b"server_")
+            })
             .map(|(k, v)| (String::from_utf8_lossy(k).into_owned(), v.clone()))
             .collect()
     }

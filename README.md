@@ -114,16 +114,23 @@ ambermap render-chunk <WORLD> -x <CHUNK_X> -z <CHUNK_Z> --output <FILE.png> [--s
 
 ### Player Markers
 
-Player positions are rendered as map markers. If the world directory contains
-an `allowlist.json`, players listed there are shown with their gamertags:
+Player positions are rendered as map markers. Names resolve in this order:
 
-```json
-[{"name": "Steve", "xuid": "2535410123456789"}]
-```
+1. **UI-assigned names** — click a player marker in the web viewer, enter a
+   name, and Save. Names persist in `player_names.json` in the output
+   directory and survive page reloads and re-renders. Saving an empty name
+   clears the override.
+2. **`allowlist.json`** in the world directory, matched by XUID:
 
-The XUID is matched against the player record keys in the LevelDB database.
-Unlisted players are shown by XUID instead; a missing or malformed
-`allowlist.json` is simply ignored.
+   ```json
+   [{"name": "Steve", "xuid": "2535410123456789"}]
+   ```
+
+3. **Record label fallback** — the player's XUID, the UUID for
+   `server_*` records, or `local_player`.
+
+Missing or malformed `allowlist.json` / `player_names.json` are simply
+ignored.
 
 ---
 

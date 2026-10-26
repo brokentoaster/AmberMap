@@ -18,6 +18,7 @@ use ambermap::leveldb::reader::WorldDb;
 use ambermap::markers::{collect_markers, Markers, SignMarker};
 use ambermap::nbt::reader::NbtReader;
 use ambermap::nbt::tag::NbtTag;
+use std::collections::HashMap;
 
 fn nbt_string(s: &str) -> Vec<u8> {
     let mut out = (s.len() as i16).to_le_bytes().to_vec();
@@ -247,17 +248,28 @@ fn resolves_player_names_from_allowlist() {
     );
 
     let lookup = names;
+    let key = ambermap::markers::key_label_for_key("player_2535410123456789");
+    assert_eq!(key, "2535410123456789");
     assert_eq!(
-        ambermap::markers::player_name_for_key("player_2535410123456789", &lookup),
+        ambermap::markers::player_name_for_key(&key, &lookup),
         "Steve"
     );
     assert_eq!(
-        ambermap::markers::player_name_for_key("player_0000000000000000", &lookup),
+        ambermap::markers::player_name_for_key("0000000000000000", &lookup),
         "0000000000000000"
     );
     assert_eq!(
-        ambermap::markers::player_name_for_key("~local_player", &lookup),
+        ambermap::markers::player_name_for_key("local_player", &lookup),
         "local_player"
+    );
+
+    // server records keep a unique per-player label and rename cleanly
+    let server_label =
+        ambermap::markers::key_label_for_key("server_c56befeb-4e8d-4afd-8170-1dd4988d4e88");
+    assert_eq!(server_label, "server_c56befeb-4e8d-4afd-8170-1dd4988d4e88");
+    assert_eq!(
+        ambermap::markers::player_name_for_key(&server_label, &lookup),
+        "c56befeb-4e8d-4afd-8170-1dd4988d4e88"
     );
 }
 
@@ -267,6 +279,82 @@ fn missing_allowlist_yields_empty_names() {
     let _ = std::fs::remove_dir_all(&tmp);
     std::fs::create_dir_all(&tmp).unwrap();
     assert!(ambermap::markers::load_player_names(&tmp).is_empty());
+}
+
+#[test]
+fn loads_player_overrides_from_output_dir() {
+    let tmp = std::env::temp_dir().join("ambermap_overrides_test");
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&tmp).unwrap();
+    std::fs::write(
+        tmp.join("player_names.json"),
+        r#"{"2535410123456789":"Notch","local_player":"Me","9999":""}"#,
+    )
+    .unwrap();
+
+    let overrides = ambermap::markers::load_player_overrides(&tmp);
+    assert_eq!(overrides.len(), 3);
+
+    let allowlist = HashMap::from([
+        ("2535410123456789".to_string(), "Steve".to_string()),
+        ("8888".to_string(), "Alex".to_string()),
+    ]);
+    let merged = ambermap::markers::merge_player_names(&allowlist, &overrides);
+    assert_eq!(merged.get("2535410123456789").unwrap(), "Notch");
+    assert_eq!(merged.get("8888").unwrap(), "Alex");
+    assert_eq!(merged.get("local_player").unwrap(), "Me");
+    assert!(!merged.contains_key("9999"));
+
+    assert_eq!(
+        ambermap::markers::player_name_for_key("2535410123456789", &merged),
+        "Notch"
+    );
+}
+
+#[test]
+fn missing_or_corrupt_overrides_yield_empty_map() {
+    let tmp = std::env::temp_dir().join("ambermap_overrides_bad_test");
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&tmp).unwrap();
+    assert!(ambermap::markers::load_player_overrides(&tmp).is_empty());
+
+    std::fs::write(tmp.join("player_names.json"), "not json at all").unwrap();
+    assert!(ambermap::markers::load_player_overrides(&tmp).is_empty());
+}
+
+#[test]
+fn hostile_names_survive_json_round_trip() {
+    let tmp = std::env::temp_dir().join("ambermap_overrides_hostile_test");
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&tmp).unwrap();
+
+    let req = ambermap::web::RenameRequest {
+        key: "player_2535410123456789".to_string(),
+        name: "a\"b\\c<d>&\u{1}".to_string(),
+    };
+    ambermap::web::apply_rename_for_test(&tmp, &req).unwrap();
+
+    let loaded = ambermap::markers::load_player_overrides(&tmp);
+    assert_eq!(
+        loaded.get("player_2535410123456789").map(|s| s.as_str()),
+        Some("a\"b\\c<d>&\u{1}")
+    );
+
+    let mut markers = Markers::default();
+    markers.players.push(ambermap::markers::PlayerMarker {
+        name: loaded.get("player_2535410123456789").unwrap().clone(),
+        key: "2535410123456789".to_string(),
+        x: 1.0,
+        y: 2.0,
+        z: 3.0,
+        dimension: Dimension::Overworld,
+    });
+    let json = markers.to_json();
+    let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+    assert_eq!(
+        parsed["players"][0]["name"].as_str().unwrap(),
+        "a\"b\\c<d>&\u{1}"
+    );
 }
 
 #[test]
