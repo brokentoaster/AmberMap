@@ -17,7 +17,7 @@ use crate::core::coordinates::ChunkPos;
 use crate::core::error::{AmberError, Result};
 use crate::leveldb::keys::Dimension;
 use crate::leveldb::reader::WorldDb;
-use crate::markers::collect_markers;
+use crate::markers::{collect_markers, load_player_names};
 use crate::raster::chunk_raster::rasterize_chunk_y_range;
 use crate::raster::colormap::ColorMap;
 use crate::tiler::block_index::BlockIndex;
@@ -241,7 +241,8 @@ pub fn render_world_map_with_db(db: &WorldDb, options: RenderOptions) -> Result<
         let _ = std::fs::write(options.output_dir.join("metadata.json"), &meta_json);
     }
 
-    let markers = collect_markers(db, options.dimension);
+    let player_names = load_player_names(&options.world_path);
+    let markers = collect_markers(db, options.dimension, &player_names);
     let markers_path = match &options.layer {
         Some(layer) => dim_dir.join(&layer.id).join("markers.json"),
         None => dim_dir.join("markers.json"),

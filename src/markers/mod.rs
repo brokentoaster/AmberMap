@@ -18,7 +18,10 @@ use crate::leveldb::keys::Dimension;
 use crate::leveldb::reader::WorldDb;
 use crate::nbt::reader::NbtReader;
 use crate::nbt::tag::NbtTag;
+use serde::Deserialize;
+use std::collections::HashMap;
 use std::fmt::Write as _;
+use std::path::Path;
 
 #[derive(Clone, Debug)]
 pub struct SignMarker {
@@ -229,6 +232,51 @@ fn parse_sign(tag: &NbtTag) -> Option<SignMarker> {
     Some(SignMarker { x, y, z, lines })
 }
 
+#[derive(Deserialize)]
+struct AllowlistEntry {
+    name: String,
+    #[serde(default)]
+    xuid: String,
+}
+
+/// Loads gamertags from the world's `allowlist.json`, keyed by XUID.
+/// `world_path` may be the world directory (which contains the file) or the
+/// `db` folder (in which case the parent is checked). A missing or malformed
+/// file yields an empty map so rendering never fails because of it.
+pub fn load_player_names(world_path: &Path) -> HashMap<String, String> {
+    let mut candidates = vec![world_path.join("allowlist.json")];
+    if let Some(parent) = world_path.parent() {
+        candidates.push(parent.join("allowlist.json"));
+    }
+    for path in candidates {
+        if let Ok(text) = std::fs::read_to_string(&path) {
+            if let Ok(entries) = serde_json::from_str::<Vec<AllowlistEntry>>(&text) {
+                let mut names = HashMap::new();
+                for entry in entries {
+                    if !entry.xuid.is_empty() {
+                        names.insert(entry.xuid, entry.name);
+                    }
+                }
+                return names;
+            }
+        }
+    }
+    HashMap::new()
+}
+
+/// Resolves the display name for a player record key. `player_<XUID>` keys
+/// join against the allowlist map; unmapped players fall back to the XUID
+/// (or "local_player") so every marker stays identifiable.
+pub fn player_name_for_key(key: &str, player_names: &HashMap<String, String>) -> String {
+    match key.strip_prefix("player_") {
+        Some(xuid) => player_names
+            .get(xuid)
+            .cloned()
+            .unwrap_or_else(|| xuid.to_string()),
+        None => "local_player".to_string(),
+    }
+}
+
 fn parse_player(tag: &NbtTag) -> Option<PlayerMarker> {
     let pos = match tag {
         NbtTag::Compound(map) => match map.get("Pos") {
@@ -259,7 +307,11 @@ pub fn parse_sign_payload(payload: &[u8]) -> Option<SignMarker> {
     parse_nbt_roots(payload).iter().find_map(parse_sign)
 }
 
-pub fn collect_markers(db: &WorldDb, dimension: Dimension) -> Markers {
+pub fn collect_markers(
+    db: &WorldDb,
+    dimension: Dimension,
+    player_names: &HashMap<String, String>,
+) -> Markers {
     let mut markers = Markers::default();
 
     for payload in db.block_entity_payloads(dimension) {
@@ -271,9 +323,11 @@ pub fn collect_markers(db: &WorldDb, dimension: Dimension) -> Markers {
         }
     }
 
-    for payload in db.player_payloads() {
+    for (key, payload) in db.player_payloads() {
+        let payload = decompress_payload(&payload).unwrap_or(payload);
         let parsed = parse_nbt_root(&payload).and_then(|tag| parse_player(&tag));
-        if let Some(player) = parsed {
+        if let Some(mut player) = parsed {
+            player.name = player_name_for_key(&key, player_names);
             markers.players.push(player);
         }
     }

@@ -224,9 +224,49 @@ fn collect_markers_on_empty_db() {
     let _ = std::fs::remove_dir_all(&tmp);
     std::fs::create_dir_all(&tmp).unwrap();
     let db = WorldDb::open(&tmp).unwrap();
-    let markers = collect_markers(&db, Dimension::Overworld);
+    let markers = collect_markers(&db, Dimension::Overworld, &std::collections::HashMap::new());
     assert!(markers.is_empty());
     assert_eq!(markers.to_json(), "{\"signs\":[],\"players\":[]}");
+}
+
+#[test]
+fn resolves_player_names_from_allowlist() {
+    let tmp = std::env::temp_dir().join("ambermap_allowlist_test");
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&tmp).unwrap();
+    std::fs::write(
+        tmp.join("allowlist.json"),
+        r#"[{"name":"Steve","xuid":"2535410123456789"},{"name":"Alex","xuid":"2535419999999999"}]"#,
+    )
+    .unwrap();
+
+    let names = ambermap::markers::load_player_names(&tmp);
+    assert_eq!(
+        names.get("2535410123456789").map(|s| s.as_str()),
+        Some("Steve")
+    );
+
+    let lookup = names;
+    assert_eq!(
+        ambermap::markers::player_name_for_key("player_2535410123456789", &lookup),
+        "Steve"
+    );
+    assert_eq!(
+        ambermap::markers::player_name_for_key("player_0000000000000000", &lookup),
+        "0000000000000000"
+    );
+    assert_eq!(
+        ambermap::markers::player_name_for_key("~local_player", &lookup),
+        "local_player"
+    );
+}
+
+#[test]
+fn missing_allowlist_yields_empty_names() {
+    let tmp = std::env::temp_dir().join("ambermap_allowlist_missing_test");
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&tmp).unwrap();
+    assert!(ambermap::markers::load_player_names(&tmp).is_empty());
 }
 
 #[test]

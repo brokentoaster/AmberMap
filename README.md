@@ -112,6 +112,19 @@ Renders an individual $16 \times 16$ chunk directly to an image:
 ambermap render-chunk <WORLD> -x <CHUNK_X> -z <CHUNK_Z> --output <FILE.png> [--scale 16]
 ```
 
+### Player Markers
+
+Player positions are rendered as map markers. If the world directory contains
+an `allowlist.json`, players listed there are shown with their gamertags:
+
+```json
+[{"name": "Steve", "xuid": "2535410123456789"}]
+```
+
+The XUID is matched against the player record keys in the LevelDB database.
+Unlisted players are shown by XUID instead; a missing or malformed
+`allowlist.json` is simply ignored.
+
 ---
 
 ## Library Usage

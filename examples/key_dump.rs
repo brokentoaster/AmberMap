@@ -5,7 +5,7 @@ use ambermap::markers::{collect_markers, parse_sign_payload};
 fn main() {
     let world = std::env::args().nth(1).unwrap();
     let db = WorldDb::open(&world).unwrap();
-    let m = collect_markers(&db, Dimension::Overworld);
+    let m = collect_markers(&db, Dimension::Overworld, &std::collections::HashMap::new());
     println!("overworld signs: {}", m.signs.len());
     let hit: Vec<_> = m
         .signs
